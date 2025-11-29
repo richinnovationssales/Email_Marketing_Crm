@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SuperAdmin {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Client {
+  id                  String               @id @default(cuid())
+  name                String
+  isApproved          Boolean              @default(false)
+  isActive            Boolean              @default(true)
+  plan                Plan                 @relation(fields: [planId], references: [id])
+  planId              String
+  planStartDate       DateTime?
+  planRenewalDate     DateTime?
+  remainingMessages   Int?
+  users               User[]
+  campaigns           Campaign[]
+  contacts            Contact[]
+  groups              Group[]
+  templates           Template[]
+  employees           Employee[]
+  customFields        CustomField[]
+  customFieldRequests CustomFieldRequest[]
+  emailEvents         EmailEvent[]
+  activityLogs        ClientActivityLog[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  SUPER_ADMIN
+  CLIENT_SUPER_ADMIN
+  CLIENT_ADMIN
+  CLIENT_USER
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  password            String
+  role                UserRole             @default(CLIENT_USER)
+  client              Client               @relation(fields: [clientId], references: [id])
+  clientId            String
+  customFieldRequests CustomFieldRequest[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SENDING
+  SENT
+  STOPPED
+}
+
+model Campaign {
+  id                String         @id @default(cuid())
+  name              String
+  subject           String
+  content           String
+  status            CampaignStatus @default(DRAFT)
+  isRecurring       Boolean        @default(false)
+  recurringSchedule String? // e.g., cron string
+  groups            Group[]
+  client            Client         @relation(fields: [clientId], references: [id])
+  clientId          String
+  emailEvents       EmailEvent[]
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+}
+
+model Contact {
+  id                String                    @id @default(cuid())
+  email             String
+  firstName         String?
+  lastName          String?
+  client            Client                    @relation(fields: [clientId], references: [id])
+  clientId          String
+  contactGroups     ContactGroup[]
+  customFieldValues ContactCustomFieldValue[]
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@unique([email, clientId])
+}
+
+model Group {
+  id            String         @id @default(cuid())
+  name          String
+  campaigns     Campaign[]
+  client        Client         @relation(fields: [clientId], references: [id])
+  clientId      String
+  contactGroups ContactGroup[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model ContactGroup {
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  contactId  String
+  group      Group    @relation(fields: [groupId], references: [id])
+  groupId    String
+  assignedAt DateTime @default(now())
+
+  @@id([contactId, groupId])
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  name      String
+  content   String
+  client    Client   @relation(fields: [clientId], references: [id])
+  clientId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Employee {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  isVerified Boolean  @default(false)
+  client     Client   @relation(fields: [clientId], references: [id])
+  clientId   String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Plan {
+  id         String   @id @default(cuid())
+  name       String
+  price      Float
+  emailLimit Int
+  clients    Client[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Enum for custom field types
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  EMAIL
+  PHONE
+  DATE
+  BOOLEAN
+  URL
+  TEXTAREA
+  SELECT
+  MULTISELECT
+}
+
+model CustomField {
+  id              String                    @id @default(cuid())
+  client          Client                    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId        String
+  name            String // Display name (e.g., "Company Name")
+  fieldKey        String // Unique key for programmatic access (e.g., "company_name")
+  type            CustomFieldType
+  isRequired      Boolean                   @default(false)
+  defaultValue    String? // Default value as string (parsed based on type)
+  options         String? // JSON array for SELECT/MULTISELECT types
+  validationRegex String? // Optional regex for validation
+  helpText        String? // Helper text for users
+  displayOrder    Int                       @default(0) // For UI ordering
+  isActive        Boolean                   @default(true) // Soft delete support
+  values          ContactCustomFieldValue[]
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  @@unique([clientId, fieldKey])
+  @@index([clientId, isActive])
+}
+
+model ContactCustomFieldValue {
+  id            String      @id @default(cuid())
+  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId     String
+  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+  customFieldId String
+  value         String // Stored as string, parsed based on field type
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([contactId, customFieldId])
+  @@index([customFieldId])
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CustomFieldRequest {
+  id              String          @id @default(cuid())
+  client          Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId        String
+  requestedBy     User            @relation(fields: [requestedById], references: [id])
+  requestedById   String
+  name            String
+  fieldKey        String
+  type            CustomFieldType
+  isRequired      Boolean         @default(false)
+  defaultValue    String?
+  options         String?
+  validationRegex String?
+  helpText        String?
+  status          RequestStatus   @default(PENDING)
+  rejectionReason String?
+  reviewedBy      String? // Admin/SuperAdmin ID who reviewed
+  reviewedAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([clientId, status])
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+}
+
+model EmailEvent {
+  id           String         @id @default(cuid())
+  client       Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId     String
+  campaign     Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignId   String?
+  contactEmail String
+  eventType    EmailEventType
+  timestamp    DateTime       @default(now())
+  mailgunId    String? // Mailgun message ID
+  errorMessage String?
+  metadata     String? // JSON for additional data
+
+  @@index([clientId, eventType])
+  @@index([campaignId])
+  @@index([timestamp])
+}
+
+enum ActivityType {
+  CLIENT_CREATED
+  CLIENT_APPROVED
+  CLIENT_REJECTED
+  CLIENT_DEACTIVATED
+  CLIENT_REACTIVATED
+  PLAN_UPGRADED
+  PLAN_DOWNGRADED
+  CUSTOM_FIELD_CREATED
+  CUSTOM_FIELD_UPDATED
+  CUSTOM_FIELD_DELETED
+  CONTACT_CREATED
+  CONTACT_UPDATED
+  CONTACT_DELETED
+  CAMPAIGN_CREATED
+  CAMPAIGN_SENT
+  USER_CREATED
+  USER_DELETED
+}
+
+model ClientActivityLog {
+  id              String       @id @default(cuid())
+  client          Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId        String?
+  activityType    ActivityType
+  performedBy     String // User/Admin/SuperAdmin ID
+  performedByRole String // Role of the performer
+  description     String
+  metadata        String? // JSON for additional context
+  ipAddress       String?
+  createdAt       DateTime     @default(now())
+
+  @@index([clientId, createdAt])
+  @@index([performedBy])
+  @@index([activityType])
+}
