@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { Auth } from '../../core/use-cases/Auth';
-import { SuperAdminAuth } from '../../core/use-cases/auth/SuperAdminAuth';
+import { AdminAuth } from '../../core/use-cases/auth/AdminAuth';
 import { UserRepository } from '../../infrastructure/repositories/UserRepository';
-import { SuperAdminRepository } from '../../infrastructure/repositories/SuperAdminRepository';
+import { AdminRepository } from '../../infrastructure/repositories/AdminRepository';
 
 const userRepository = new UserRepository();
-const superAdminRepository = new SuperAdminRepository();
+const adminRepository = new AdminRepository();
 const authUseCase = new Auth(userRepository);
-const superAdminAuthUseCase = new SuperAdminAuth(superAdminRepository);
+const adminAuthUseCase = new AdminAuth(adminRepository);
 
 export class AuthController {
   // User login
@@ -47,20 +47,24 @@ export class AuthController {
     }
   }
 
-  // SuperAdmin login
-  async superAdminLogin(req: Request, res: Response): Promise<void> {
+  // Admin login (unified for both SUPER_ADMIN and ADMIN)
+  async adminLogin(req: Request, res: Response): Promise<void> {
     try {
-      const { email, password } = req.body;
-      const token = await superAdminAuthUseCase.login(email, password);
+      const { email, password, isSuperAdmin = false } = req.body;
+      const token = await adminAuthUseCase.login(email, password, isSuperAdmin);
 
       if (!token) {
-        res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid credentials' });
+        res.status(StatusCodes.UNAUTHORIZED).json({
+          message: isSuperAdmin
+            ? 'Invalid credentials or insufficient permissions for super admin access'
+            : 'Invalid credentials or insufficient permissions for admin access'
+        });
         return;
       }
 
       res.json({ token });
     } catch (error) {
-      console.error('SuperAdmin login error:', error);
+      console.error('Admin login error:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }

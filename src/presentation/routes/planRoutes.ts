@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { PlanController } from '../controllers/PlanController';
-import { authMiddleware, superAdminOnly } from '../middlewares/authMiddleware';
+import { authMiddleware } from '../middlewares/authMiddleware';
 
 const router = Router();
 const planController = new PlanController();
 
-router.use(authMiddleware, superAdminOnly);
+router.use(authMiddleware);
 
 router.post('/', planController.createPlan);
 router.get('/', planController.getPlans);

@@ -4,7 +4,7 @@ import { AuthController } from '../controllers/AuthController';
 const router = Router();
 const authController = new AuthController();
 
-router.post('/login/superadmin', authController.superAdminLogin);
-// router.post('/login', authController.userLogin);
+router.post('/login/admin', authController.adminLogin);
+router.post('/login', authController.login);
 
 export default router;

@@ -32,5 +32,27 @@ export class ClientRepository {
         const clients = await prisma.client.findMany({ where: { isApproved: false }, include: { plan: true } });
         return clients;
     }
+
+    async getAnalytics(clientId: string) {
+        const [
+            totalEmailsSent,
+            campaignsScheduled,
+            campaignsSent,
+            client
+        ] = await Promise.all([
+            prisma.emailEvent.count({ where: { clientId, eventType: 'SENT' } }),
+            prisma.campaign.count({ where: { clientId, status: 'APPROVED' } }),
+            prisma.campaign.count({ where: { clientId, status: 'SENT' } }),
+            prisma.client.findUnique({ where: { id: clientId }, select: { plan: true, remainingMessages: true } })
+        ]);
+
+        return {
+            totalEmailsSent,
+            campaignsScheduled,
+            campaignsSent,
+            planName: client?.plan?.name,
+            remainingMessages: client?.remainingMessages
+        };
+    }
 }
 

@@ -30,9 +30,20 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 };
 
-export const superAdminOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
-  if (req.user?.role !== UserRole.SUPER_ADMIN) {
-    return res.status(StatusCodes.FORBIDDEN).send({ message: 'Forbidden: Super admin access required' });
+import { AdminRole } from '../../core/entities/Admin';
+
+export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
+  // @ts-ignore
+  if (req.user?.role !== AdminRole.SUPER_ADMIN || req.user?.role !== AdminRole.ADMIN) {
+    return res.status(StatusCodes.FORBIDDEN).send({ message: 'Forbidden: Admin access required' });
+  }
+  next();
+};
+
+export const rootAdminOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
+  // @ts-ignore
+  if (req.user?.role !== AdminRole.SUPER_ADMIN) {
+    return res.status(StatusCodes.FORBIDDEN).send({ message: 'Forbidden: Super Admin access required' });
   }
   next();
 };

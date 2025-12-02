@@ -9,7 +9,7 @@ async function main() {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const superAdmin = await prisma.superAdmin.create({
+  const superAdmin = await prisma.admin.create({
     data: {
       email: email,
       password: hashedPassword,

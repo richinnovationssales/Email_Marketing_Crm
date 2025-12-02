@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './authRoutes';
-import superAdminRoutes from './superAdminRoutes';
+import adminRoutes from './adminRoutes';
 import userRoutes from './userRoutes';
 import employeeRoutes from './employeeRoutes';
 import planRoutes from './planRoutes';
@@ -14,7 +14,7 @@ import dashboardRoutes from './dashboardRoutes';
 const router = Router();
 
 router.use('/auth', authRoutes);
-router.use('/superadmin', superAdminRoutes);
+router.use('/admin', adminRoutes);
 router.use('/users', userRoutes);
 router.use('/employees', employeeRoutes);
 router.use('/plans', planRoutes);
