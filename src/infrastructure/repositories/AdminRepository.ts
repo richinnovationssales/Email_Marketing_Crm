@@ -3,6 +3,7 @@ import prisma from '../../infrastructure/database/prisma';
 import { Prisma } from '@prisma/client';
 
 export class AdminRepository {
+    
     async findByEmail(email: string): Promise<Admin | null> {
         const admin = await prisma.admin.findUnique({ where: { email } });
         if (!admin) return null;
@@ -40,4 +41,5 @@ export class AdminRepository {
         if (!admin) return null;
         return { ...admin, role: admin.role as AdminRole };
     }
+
 }

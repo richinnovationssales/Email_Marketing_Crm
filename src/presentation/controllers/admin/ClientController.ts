@@ -161,4 +161,22 @@ export class ClientController {
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }
+
+    // Onboard first client
+   async onboardClient(req: AuthRequest, res: Response): Promise<void> {
+    try {
+        if (!req.body.planId) {
+            res.status(400).json({ message: "planId is required" });
+            return;
+        }
+
+        const client = await clientManagement.create(req.body);
+        res.status(StatusCodes.CREATED).json(client);
+
+    } catch (error) {
+        console.error('Error onboarding client:', error);
+        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+}
+
 }

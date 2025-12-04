@@ -29,4 +29,10 @@ router.patch('/clients/:id/deactivate', clientController.deactivateClient);
 router.patch('/clients/:id/reactivate', clientController.reactivateClient);
 router.get('/clients/:id/analytics', clientController.getClientAnalytics);
 
+
+router.post('/clients/onboard', clientController.onboardClient);
+
+
+
+
 export default router;

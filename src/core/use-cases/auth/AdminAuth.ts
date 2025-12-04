@@ -10,6 +10,7 @@ export class AdminAuth {
         // Determine the expected role based on the isSuperAdmin flag
         const expectedRole = isSuperAdmin ? AdminRole.SUPER_ADMIN : AdminRole.ADMIN;
 
+        
         // Find admin by email and verify they have the expected role
         const admin = await this.adminRepository.findByEmailAndRole(email, expectedRole);
 

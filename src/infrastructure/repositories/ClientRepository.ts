@@ -3,10 +3,25 @@ import prisma from '../../infrastructure/database/prisma';
 import { Prisma } from '@prisma/client';
 
 export class ClientRepository {
-    async create(data: Prisma.ClientCreateInput): Promise<Client> {
-        const client = await prisma.client.create({ data, include: { plan: true } });
-        return client;
-    }
+   async create(data: any): Promise<Client> {
+    const client = await prisma.client.create({
+        data: {
+            name: data.name,
+            isApproved: data.isApproved ?? false,
+            isActive: data.isActive ?? true,
+            plan: {
+                connect: { id: data.planId }   
+            },
+            planStartDate: data.planStartDate,
+            planRenewalDate: data.planRenewalDate,
+            remainingMessages: data.remainingMessages
+        },
+        include: { plan: true }
+    });
+
+    return client;
+}
+
 
     async findAll(): Promise<Client[]> {
         const clients = await prisma.client.findMany({ include: { plan: true } });

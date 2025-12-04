@@ -60,4 +60,37 @@ export class AdminUserController {
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }
+
+
+async onboardClient(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    // @ts-ignore
+    const requesterRole = req.user?.role as AdminRole;
+
+    const { adminId, name, planId, planStartDate, remainingMessages } = req.body;
+
+    const client = await adminUserManagement.onboardClient(
+        adminId,
+        requesterRole,
+        { name, planId, planStartDate, remainingMessages }
+    );
+
+    res.status(StatusCodes.CREATED).json(client);
+
+  } catch (error: any) {
+
+    if (error.message.startsWith('Unauthorized')) {
+      res.status(StatusCodes.FORBIDDEN).json({ message: error.message });
+      return;
+    }
+
+    console.error('Error onboarding client:', error);
+    res
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ message: 'Internal server error' });
+  }
+}
+
+
+
 }

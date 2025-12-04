@@ -52,7 +52,7 @@ export class AuthController {
     try {
       const { email, password, isSuperAdmin = false } = req.body;
       const token = await adminAuthUseCase.login(email, password, isSuperAdmin);
-
+      
       if (!token) {
         res.status(StatusCodes.UNAUTHORIZED).json({
           message: isSuperAdmin
