@@ -33,10 +33,6 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
 import { AdminRole } from '../../core/entities/Admin';
 
 export const adminOnly = (req: AuthRequest, res: Response, next: NextFunction) => {
-  console.log(AdminRole.SUPER_ADMIN);
-  console.log(req.user?.role);
-  console.log(AdminRole.SUPER_ADMIN === req.user?.role);
-  console.log(AdminRole.ADMIN === req.user?.role);
   // @ts-ignore
   if (req.user?.role !== AdminRole.SUPER_ADMIN && req.user?.role !== AdminRole.ADMIN) {
     return res.status(StatusCodes.FORBIDDEN).send({ message: 'Forbidden: Admin access required' });
