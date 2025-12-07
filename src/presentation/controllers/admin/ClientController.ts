@@ -1,11 +1,21 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { ClientManagement } from '../../../core/use-cases/admin/ClientManagement';
+import { ClientRegistrationUseCase } from '../../../core/use-cases/admin/ClientRegistrationUseCase';
 import { ClientRepository } from '../../../infrastructure/repositories/ClientRepository';
+import { UserRepository } from '../../../infrastructure/repositories/UserRepository';
+import { CustomFieldRepository } from '../../../infrastructure/repositories/CustomFieldRepository';
 import { AuthRequest } from '../../middlewares/authMiddleware';
 
 const clientRepository = new ClientRepository();
+const userRepository = new UserRepository();
+const customFieldRepository = new CustomFieldRepository();
 const clientManagement = new ClientManagement(clientRepository);
+const clientRegistration = new ClientRegistrationUseCase(
+    clientRepository,
+    userRepository,
+    customFieldRepository
+);
 
 export class ClientController {
     // Get all clients
@@ -34,16 +44,23 @@ export class ClientController {
         }
     }
 
-    // Create new client
     async createClient(req: AuthRequest, res: Response): Promise<void> {
         try {
-            const client = await clientManagement.create(req.body);
+            const client = await clientRegistration.execute(req.body);
             res.status(StatusCodes.CREATED).json(client);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating client:', error);
+
+            if (error.message === 'Client with this name already exists' ||
+                error.message === 'User with this email already exists') {
+                res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
+                return;
+            }
+
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }
+
 
     // Update client
     async updateClient(req: AuthRequest, res: Response): Promise<void> {

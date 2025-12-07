@@ -48,6 +48,12 @@ export class ClientRepository {
         return clients;
     }
 
+    async findByName(name: string): Promise<Client | null> {
+        const client = await prisma.client.findFirst({ where: { name }, include: { plan: true } });
+        return client;
+    }
+
+
     async getAnalytics(clientId: string) {
         const [
             totalEmailsSent,
