@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { EmployeeController } from '../controllers/EmployeeController';
 import { authMiddleware, checkClientRole } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 import { UserRole } from '@prisma/client';
 
 const router = Router();
@@ -9,6 +10,7 @@ const employeeController = new EmployeeController();
 router.post('/verify', employeeController.verifyEmployee);
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/', checkClientRole([UserRole.CLIENT_ADMIN]), employeeController.createEmployee);
 router.get('/', employeeController.getEmployees);
