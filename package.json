@@ -6,7 +6,8 @@
     "start": "ts-node src/index.ts",
     "build": "tsc",
     "start:prod": "node dist/index.js",
-    "dev": "nodemon --watch src --exec ts-node src/index.ts"
+    "dev": "nodemon --watch src --exec ts-node src/index.ts",
+    "create:superadmin": "ts-node scripts/createSuperAdmin.ts"
   },
   "keywords": [],
   "author": "",

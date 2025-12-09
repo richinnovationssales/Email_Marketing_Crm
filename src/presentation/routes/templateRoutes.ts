@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { TemplateController } from '../controllers/TemplateController';
 import { authMiddleware } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 
 const router = Router();
 const templateController = new TemplateController();
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/', templateController.createTemplate);
 router.get('/', templateController.getTemplates);

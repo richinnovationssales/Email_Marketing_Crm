@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { ClientController } from '../controllers/admin/ClientController';
 import { AdminUserController } from '../controllers/admin/AdminUserController';
 import { authMiddleware, adminOnly, rootAdminOnly } from '../middlewares/authMiddleware';
+import { validateBody } from '../middlewares/validationMiddleware';
+import { clientRegistrationSchema } from '../validations/clientValidationSchemas';
 
 const router = Router();
 const clientController = new ClientController();
@@ -17,7 +19,7 @@ router.delete('/users/:id', rootAdminOnly, adminUserController.deleteAdmin);
 // Client Management (All Admins)
 router.use(adminOnly);
 
-router.post('/clients', clientController.createClient);
+router.post('/clients', validateBody(clientRegistrationSchema), clientController.createClient);
 router.get('/clients', clientController.getClients);
 router.get('/clients/pending', clientController.getPendingClients);
 router.get('/clients/:id', clientController.getClientById);

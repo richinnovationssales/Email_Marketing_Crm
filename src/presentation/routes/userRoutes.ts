@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { UserController } from '../controllers/UserController';
 import { authMiddleware, checkClientRole } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 import { UserRole } from '@prisma/client';
 
 const router = Router();
 const userController = new UserController();
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/', checkClientRole([UserRole.CLIENT_ADMIN]), userController.createUser);
 router.get('/', userController.getUsers);

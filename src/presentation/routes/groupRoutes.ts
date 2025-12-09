@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { GroupController } from '../controllers/GroupController';
 import { authMiddleware } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 
 const router = Router();
 const groupController = new GroupController();
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/', groupController.createGroup);
 router.get('/', groupController.getGroups);

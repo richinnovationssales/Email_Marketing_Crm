@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { CampaignController } from '../controllers/CampaignController';
 import { authMiddleware, checkClientRole } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 import { UserRole } from '@prisma/client';
 
 const router = Router();
 const campaignController = new CampaignController();
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/', campaignController.createCampaign);
 router.get('/', campaignController.getCampaigns);
