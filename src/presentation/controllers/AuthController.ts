@@ -63,7 +63,7 @@ export class AuthController {
     try {
       const { email, password, isSuperAdmin = false } = req.body;
       const token = await adminAuthUseCase.login(email, password, isSuperAdmin);
-      
+
       if (!token) {
         res.status(StatusCodes.UNAUTHORIZED).json({
           message: isSuperAdmin
@@ -73,7 +73,7 @@ export class AuthController {
         return;
       }
 
-      res.json({ token });
+      res.json({ data: token });
     } catch (error) {
       console.error('Admin login error:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });

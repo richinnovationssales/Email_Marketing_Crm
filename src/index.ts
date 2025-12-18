@@ -1,5 +1,6 @@
 import express from 'express';
 import morgan from 'morgan';
+import cors from 'cors';
 import routes from './presentation/routes';
 import { CampaignScheduler } from './infrastructure/services/CampaignScheduler';
 import { CampaignRepository } from './infrastructure/repositories/CampaignRepository';
@@ -19,6 +20,11 @@ const stream = {
 };
 
 app.use(morgan('tiny', { stream }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use('/api', routes);
 
