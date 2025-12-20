@@ -35,6 +35,11 @@ export class ClientRegistrationUseCase {
 
         const hashedPassword = await bcrypt.hash(data.adminPassword, 10);
 
+        const plan = await prisma.plan.findUnique({ where: { id: data.planId } });
+        if (!plan) {
+            throw new Error(`Plan not found with ID: ${data.planId}`);
+        }
+
         const customFieldsToCreate = data.customFields && data.customFields.length > 0
             ? data.customFields
             : getDefaultCustomFields();

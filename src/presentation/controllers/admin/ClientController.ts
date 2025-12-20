@@ -5,12 +5,14 @@ import { ClientRegistrationUseCase } from '../../../core/use-cases/admin/ClientR
 import { ClientRepository } from '../../../infrastructure/repositories/ClientRepository';
 import { UserRepository } from '../../../infrastructure/repositories/UserRepository';
 import { CustomFieldRepository } from '../../../infrastructure/repositories/CustomFieldRepository';
+import { PlanRepository } from '../../../infrastructure/repositories/PlanRepository';
 import { AuthRequest } from '../../middlewares/authMiddleware';
 
 const clientRepository = new ClientRepository();
 const userRepository = new UserRepository();
 const customFieldRepository = new CustomFieldRepository();
-const clientManagement = new ClientManagement(clientRepository);
+const planRepository = new PlanRepository();
+const clientManagement = new ClientManagement(clientRepository, planRepository);
 const clientRegistration = new ClientRegistrationUseCase(
     clientRepository,
     userRepository,
@@ -180,20 +182,20 @@ export class ClientController {
     }
 
     // Onboard first client
-   async onboardClient(req: AuthRequest, res: Response): Promise<void> {
-    try {
-        if (!req.body.planId) {
-            res.status(400).json({ message: "planId is required" });
-            return;
+    async   onboardClient(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.body.planId) {
+                res.status(400).json({ message: "planId is required" });
+                return;
+            }
+
+            const client = await clientManagement.create(req.body);
+            res.status(StatusCodes.CREATED).json(client);
+
+        } catch (error) {
+            console.error('Error onboarding client:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
-
-        const client = await clientManagement.create(req.body);
-        res.status(StatusCodes.CREATED).json(client);
-
-    } catch (error) {
-        console.error('Error onboarding client:', error);
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
-}
 
 }

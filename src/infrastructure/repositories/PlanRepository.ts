@@ -21,4 +21,15 @@ export class PlanRepository {
   async delete(id: string): Promise<Plan | null> {
     return await prisma.plan.delete({ where: { id } });
   }
+
+  async countClientsByPlanId(planId: string): Promise<number> {
+    return await prisma.client.count({ where: { planId } });
+  }
+
+  async findClientsByPlanId(planId: string) {
+    return await prisma.client.findMany({
+      where: { planId },
+      include: { plan: true }
+    });
+  }
 }

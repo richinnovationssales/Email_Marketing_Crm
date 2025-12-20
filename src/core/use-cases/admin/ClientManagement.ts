@@ -1,12 +1,23 @@
 import { Client } from '../../entities/Client';
 import { ClientRepository } from '../../../infrastructure/repositories/ClientRepository';
+import { PlanRepository } from '../../../infrastructure/repositories/PlanRepository';
 import { Prisma } from '@prisma/client';
 
 export class ClientManagement {
-    constructor(private clientRepository: ClientRepository) { }
+    constructor(
+        private clientRepository: ClientRepository,
+        private planRepository: PlanRepository
+    ) { }
 
     async create(data: Prisma.ClientCreateInput): Promise<Client> {
-        // Add any business logic validation here if needed
+        // Validate that the plan exists
+        if (data.plan && typeof data.plan === 'object' && 'connect' in data.plan) {
+            const planId = (data.plan.connect as { id: string }).id;
+            const plan = await this.planRepository.findById(planId);
+            if (!plan) {
+                throw new Error(`Plan not found with ID: ${planId}`);
+            }
+        }
         return this.clientRepository.create(data);
     }
 
