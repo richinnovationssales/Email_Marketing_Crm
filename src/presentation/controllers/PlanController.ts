@@ -20,7 +20,7 @@ export class PlanController {
   async getPlans(req: Request, res: Response): Promise<void> {
     try {
       const plans = await planManagementUseCase.findAll();
-      res.json(plans);
+      res.json({ data: plans });
     } catch (error) {
       console.error('Error fetching plans:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
