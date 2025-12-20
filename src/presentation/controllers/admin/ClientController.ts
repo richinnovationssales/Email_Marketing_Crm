@@ -24,7 +24,7 @@ export class ClientController {
     async getClients(req: AuthRequest, res: Response): Promise<void> {
         try {
             const clients = await clientManagement.findAll();
-            res.json(clients);
+            res.json({ data: clients });
         } catch (error) {
             console.error('Error fetching clients:', error);
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
@@ -182,7 +182,7 @@ export class ClientController {
     }
 
     // Onboard first client
-    async   onboardClient(req: AuthRequest, res: Response): Promise<void> {
+    async onboardClient(req: AuthRequest, res: Response): Promise<void> {
         try {
             if (!req.body.planId) {
                 res.status(400).json({ message: "planId is required" });
