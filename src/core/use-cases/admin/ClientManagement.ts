@@ -44,4 +44,9 @@ export class ClientManagement {
     async getAnalytics(clientId: string) {
         return this.clientRepository.getAnalytics(clientId);
     }
+
+    async findByIdWithDetails(id: string) {
+        return this.clientRepository.findByIdWithDetails(id);
+    }
 }
+

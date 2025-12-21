@@ -34,12 +34,12 @@ export class ClientController {
     // Get client by ID
     async getClientById(req: AuthRequest, res: Response): Promise<void> {
         try {
-            const client = await clientManagement.findById(req.params.id);
+            const client = await clientManagement.findByIdWithDetails(req.params.id);
             if (!client) {
                 res.status(StatusCodes.NOT_FOUND).json({ message: 'Client not found' });
                 return;
             }
-            res.json(client);
+            res.json({ data: client });
         } catch (error) {
             console.error('Error fetching client:', error);
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
