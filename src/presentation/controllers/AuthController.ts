@@ -33,7 +33,7 @@ export class AuthController {
         return;
       }
 
-      res.json({ token });
+      res.json({ data: token });
     } catch (error) {
       console.error('Login error:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
