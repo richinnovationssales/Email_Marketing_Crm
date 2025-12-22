@@ -10,10 +10,47 @@ const userController = new UserController();
 router.use(authMiddleware);
 router.use(checkClientApproval);
 
-router.post('/', checkClientRole([UserRole.CLIENT_ADMIN]), userController.createUser);
-router.get('/', userController.getUsers);
-router.get('/:id', userController.getUserById);
-router.put('/:id', checkClientRole([UserRole.CLIENT_ADMIN]), userController.updateUser);
-router.delete('/:id', checkClientRole([UserRole.CLIENT_ADMIN]), userController.deleteUser);
+
+router.post(
+    '/client-admins',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN]),
+    userController.createClientAdmin.bind(userController)
+);
+
+router.post(
+    '/client-users',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN]),
+    userController.createClientUser.bind(userController)
+);
+
+router.get(
+    '/',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN]),
+    userController.getUsers.bind(userController)
+);
+
+router.get(
+    '/:id',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN]),
+    userController.getUserById.bind(userController)
+);
+
+router.put(
+    '/:id',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN]),
+    userController.updateUser.bind(userController)
+);
+
+router.delete(
+    '/:id',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN]),
+    userController.deleteUser.bind(userController)
+);
+
+router.get(
+    '/me/profile',
+    checkClientRole([UserRole.CLIENT_SUPER_ADMIN, UserRole.CLIENT_ADMIN, UserRole.CLIENT_USER]),
+    userController.getProfile.bind(userController)
+);
 
 export default router;

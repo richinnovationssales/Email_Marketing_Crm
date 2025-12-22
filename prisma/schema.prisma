@@ -36,7 +36,7 @@ model Client {
   contacts            Contact[]
   groups              Group[]
   templates           Template[]
-  employees           Employee[]
+
   customFields        CustomField[]
   customFieldRequests CustomFieldRequest[]
   emailEvents         EmailEvent[]
@@ -137,17 +137,6 @@ model Template {
   clientId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-}
-
-model Employee {
-  id         String   @id @default(cuid())
-  name       String
-  email      String   @unique
-  isVerified Boolean  @default(false)
-  client     Client   @relation(fields: [clientId], references: [id])
-  clientId   String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 }
 
 model Plan {
