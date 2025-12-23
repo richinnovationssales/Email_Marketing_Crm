@@ -10,8 +10,25 @@ export class GroupRepository {
     return await prisma.group.findMany({ where: { clientId } });
   }
 
-  async findById(id: string, clientId: string): Promise<Group | null> {
-    return await prisma.group.findFirst({ where: { id, clientId } });
+  async findById(id: string, clientId: string): Promise<any> {
+    return await prisma.group.findFirst({
+      where: { id, clientId },
+      include: {
+        contactGroups: {
+          include: {
+            contact: {
+              include: {
+                customFieldValues: {
+                  include: {
+                    customField: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
   }
 
   async update(id: string, data: Partial<Group>, clientId: string): Promise<Group | null> {
