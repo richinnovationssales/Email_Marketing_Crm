@@ -2,16 +2,59 @@ import { Contact } from '../../core/entities/Contact';
 import prisma from '../../infrastructure/database/prisma';
 
 export class ContactRepository {
-  async create(data: Contact, clientId: string): Promise<Contact> {
-    return await prisma.contact.create({ data: { ...data, clientId } });
+  async create(data: Contact, clientId: string, userId: string): Promise<Contact> {
+    return await prisma.contact.create({
+      data: {
+        ...data,
+        clientId,
+        createdById: userId
+      },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
   }
 
   async findAll(clientId: string): Promise<Contact[]> {
-    return await prisma.contact.findMany({ where: { clientId } });
+    return await prisma.contact.findMany({
+      where: { clientId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
   }
 
   async findById(id: string, clientId: string): Promise<Contact | null> {
-    return await prisma.contact.findFirst({ where: { id, clientId } });
+    return await prisma.contact.findFirst({
+      where: { id, clientId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
   }
 
   async update(id: string, data: Partial<Contact>, clientId: string): Promise<Contact | null> {

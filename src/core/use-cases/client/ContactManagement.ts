@@ -4,8 +4,8 @@ import { Contact } from '../../entities/Contact';
 export class ContactManagement {
   constructor(private contactRepository: ContactRepository) { }
 
-  async create(data: Contact, clientId: string): Promise<Contact> {
-    return this.contactRepository.create(data, clientId);
+  async create(data: Contact, clientId: string, userId: string): Promise<Contact> {
+    return this.contactRepository.create(data, clientId, userId);
   }
 
   async findAll(clientId: string): Promise<Contact[]> {

@@ -4,8 +4,8 @@ import { Campaign } from '../../entities/Campaign';
 export class CampaignManagement {
   constructor(private campaignRepository: CampaignRepository) { }
 
-  async create(data: Campaign, clientId: string): Promise<Campaign> {
-    return this.campaignRepository.create(data, clientId);
+  async create(data: Campaign, clientId: string, userId: string): Promise<Campaign> {
+    return this.campaignRepository.create(data, clientId, userId);
   }
 
   async findAll(clientId: string): Promise<Campaign[]> {

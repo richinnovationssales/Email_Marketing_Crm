@@ -5,7 +5,7 @@ import csv from 'csv-parser';
 export class BulkContactUpload {
   constructor(private contactRepository: ContactRepository) { }
 
-  async execute(filePath: string, clientId: string): Promise<void> {
+  async execute(filePath: string, clientId: string, userId: string): Promise<void> {
     const contacts: any[] = [];
     return new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
@@ -14,7 +14,7 @@ export class BulkContactUpload {
         .on('end', async () => {
           for (const contact of contacts) {
             // Assuming the CSV has 'email', 'firstName', and 'lastName' columns
-            await this.contactRepository.create(contact, clientId);
+            await this.contactRepository.create(contact, clientId, userId);
           }
           fs.unlinkSync(filePath); // Clean up the uploaded file
           resolve();

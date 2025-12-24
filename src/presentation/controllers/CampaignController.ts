@@ -22,7 +22,11 @@ export class CampaignController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId);
+      if (!req.user?.id) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
+        return;
+      }
+      const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId, req.user.id);
       res.status(StatusCodes.CREATED).json(campaign);
     } catch (error) {
       console.error('Error creating campaign:', error);

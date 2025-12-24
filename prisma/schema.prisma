@@ -22,20 +22,20 @@ model Admin {
 }
 
 model Client {
-  id                  String               @id @default(cuid())
-  name                String
-  isApproved          Boolean              @default(false)
-  isActive            Boolean              @default(true)
-  plan                Plan                 @relation(fields: [planId], references: [id])
-  planId              String
-  planStartDate       DateTime?
-  planRenewalDate     DateTime?
-  remainingMessages   Int?
-  users               User[]
-  campaigns           Campaign[]
-  contacts            Contact[]
-  groups              Group[]
-  templates           Template[]
+  id                String     @id @default(cuid())
+  name              String
+  isApproved        Boolean    @default(false)
+  isActive          Boolean    @default(true)
+  plan              Plan       @relation(fields: [planId], references: [id])
+  planId            String
+  planStartDate     DateTime?
+  planRenewalDate   DateTime?
+  remainingMessages Int?
+  users             User[]
+  campaigns         Campaign[]
+  contacts          Contact[]
+  groups            Group[]
+  templates         Template[]
 
   customFields        CustomField[]
   customFieldRequests CustomFieldRequest[]
@@ -63,6 +63,10 @@ model User {
   customFieldRequests CustomFieldRequest[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  contacts            Contact[]
+  campaigns           Campaign[]
+  groups              Group[]
+  templates           Template[]
 }
 
 enum CampaignStatus {
@@ -89,6 +93,8 @@ model Campaign {
   emailEvents       EmailEvent[]
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  createdById       String
+  createdBy         User           @relation(fields: [createdById], references: [id])
 }
 
 model Contact {
@@ -98,15 +104,15 @@ model Contact {
   lastName          String?
   client            Client                    @relation(fields: [clientId], references: [id])
   clientId          String
+  createdById       String
   contactGroups     ContactGroup[]
   customFieldValues ContactCustomFieldValue[]
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
+  createdBy         User                      @relation(fields: [createdById], references: [id])
 
   @@unique([email, clientId])
 }
-
-
 
 model Group {
   id            String         @id @default(cuid())
@@ -117,6 +123,8 @@ model Group {
   contactGroups ContactGroup[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  createdById   String
+  createdBy     User           @relation(fields: [createdById], references: [id])
 }
 
 model ContactGroup {
@@ -130,13 +138,15 @@ model ContactGroup {
 }
 
 model Template {
-  id        String   @id @default(cuid())
-  name      String
-  content   String
-  client    Client   @relation(fields: [clientId], references: [id])
-  clientId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  content     String
+  client      Client   @relation(fields: [clientId], references: [id])
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 model Plan {
