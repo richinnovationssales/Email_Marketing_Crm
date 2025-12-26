@@ -34,8 +34,12 @@ export class ContactController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const contacts = await contactManagementUseCase.findAll(req.user.clientId);
-      res.json(contacts);
+
+      const cursor = req.query.cursor as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+      const result = await contactManagementUseCase.findAll(req.user.clientId, cursor, limit);
+      res.json(result);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });

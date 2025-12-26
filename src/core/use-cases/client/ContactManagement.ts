@@ -22,8 +22,8 @@ export class ContactManagement {
     return this.contactRepository.create(data, clientId, userId);
   }
 
-  async findAll(clientId: string): Promise<Contact[]> {
-    return this.contactRepository.findAll(clientId);
+  async findAll(clientId: string, cursor?: string, limit?: number): Promise<{ data: Contact[], nextCursor: string | null }> {
+    return this.contactRepository.findAll(clientId, cursor, limit);
   }
 
   async findById(id: string, clientId: string): Promise<Contact | null> {

@@ -68,9 +68,15 @@ export class ContactRepository {
     });
   }
 
-  async findAll(clientId: string): Promise<Contact[]> {
-    return await prisma.contact.findMany({
+  async findAll(clientId: string, cursor?: string, limit: number = 20): Promise<{ data: Contact[], nextCursor: string | null }> {
+    const contacts = await prisma.contact.findMany({
       where: { clientId },
+      take: limit + 1, // Fetch one extra to determine if there's a next page
+      ...(cursor && {
+        cursor: { id: cursor },
+        skip: 1 // Skip the cursor itself
+      }),
+      orderBy: { createdAt: 'desc' },
       include: {
         createdBy: {
           select: {
@@ -83,6 +89,12 @@ export class ContactRepository {
         }
       }
     });
+
+    const hasMore = contacts.length > limit;
+    const data = hasMore ? contacts.slice(0, limit) : contacts;
+    const nextCursor = hasMore ? data[data.length - 1].id : null;
+
+    return { data, nextCursor };
   }
 
   async findById(id: string, clientId: string): Promise<Contact | null> {
