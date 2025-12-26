@@ -52,6 +52,11 @@ export class ContactRepository {
             createdAt: true,
             updatedAt: true
           }
+        },
+        customFieldValues: {
+          include: {
+            customField: true
+          }
         }
       }
     });

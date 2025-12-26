@@ -9,6 +9,7 @@ import campaignRoutes from './campaignRoutes';
 import groupRoutes from './groupRoutes';
 import contactGroupRoutes from './contactGroupRoutes';
 import dashboardRoutes from './dashboardRoutes';
+import customFieldRoutes from './customFieldRoutes';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/campaigns', campaignRoutes);
 router.use('/groups', groupRoutes);
 router.use('/contact-groups', contactGroupRoutes);
 router.use('/dashboard', dashboardRoutes);
+router.use('/custom-fields', customFieldRoutes);
 
 export default router;

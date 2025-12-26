@@ -15,4 +15,12 @@ export class ContactGroupManagement {
   async getContactsInGroup(groupId: string, clientId: string): Promise<ContactGroup[]> {
     return this.contactGroupRepository.getContactsInGroup(groupId, clientId);
   }
+
+  async assignMultipleContactsToGroup(contactIds: string[], groupId: string, clientId: string): Promise<{ groupId: string; assignedContactIds: string[] }> {
+    return this.contactGroupRepository.assignMultipleContactsToGroup(contactIds, groupId, clientId);
+  }
+
+  async removeMultipleContactsFromGroup(contactIds: string[], groupId: string, clientId: string): Promise<{ groupId: string; removedContactIds: string[] }> {
+    return this.contactGroupRepository.removeMultipleContactsFromGroup(contactIds, groupId, clientId);
+  }
 }

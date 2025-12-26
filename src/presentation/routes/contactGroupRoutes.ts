@@ -7,6 +7,9 @@ const contactGroupController = new ContactGroupController();
 
 router.use(authMiddleware);
 
+router.post('/assign', contactGroupController.assignMultipleContactsToGroup);
+router.delete('/remove', contactGroupController.removeMultipleContactsFromGroup);
+
 router.post('/', contactGroupController.assignContactToGroup);
 router.delete('/:contactId/:groupId', contactGroupController.removeContactFromGroup);
 router.get('/:groupId', contactGroupController.getContactsInGroup);

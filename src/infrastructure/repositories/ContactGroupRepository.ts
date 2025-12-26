@@ -58,4 +58,77 @@ export class ContactGroupRepository {
       },
     });
   }
+
+  async assignMultipleContactsToGroup(contactIds: string[], groupId: string, clientId: string): Promise<{ groupId: string; assignedContactIds: string[] }> {
+    // Verify group belongs to client
+    const group = await prisma.group.findFirst({ where: { id: groupId, clientId } });
+    if (!group) throw new Error('Group not found in this client');
+
+    // 1. Filter valid contacts belonging to client
+    // We only care if they exist and belong to the client
+    const validContacts = await prisma.contact.findMany({
+      where: {
+        clientId,
+        id: { in: contactIds }
+      },
+      select: { id: true }
+    });
+    const validContactIds = validContacts.map(c => c.id);
+
+    if (validContactIds.length === 0) {
+      return { groupId, assignedContactIds: [] };
+    }
+
+    // 2. Find existing relations to avoid unique constraint violations
+    const existing = await prisma.contactGroup.findMany({
+      where: {
+        groupId,
+        contactId: { in: validContactIds }
+      },
+      select: { contactId: true }
+    });
+    const existingIds = new Set(existing.map(cg => cg.contactId));
+
+    // 3. Identify new ones
+    const toAdd = validContactIds.filter(id => !existingIds.has(id));
+
+    if (toAdd.length > 0) {
+      await prisma.contactGroup.createMany({
+        data: toAdd.map(contactId => ({ contactId, groupId })),
+        skipDuplicates: true
+      });
+    }
+
+    return { groupId, assignedContactIds: toAdd };
+  }
+
+  async removeMultipleContactsFromGroup(contactIds: string[], groupId: string, clientId: string): Promise<{ groupId: string; removedContactIds: string[] }> {
+    // Verify group belongs to client
+    const group = await prisma.group.findFirst({ where: { id: groupId, clientId } });
+    if (!group) throw new Error('Group not found in this client');
+
+    // 1. Identify which need to be removed (must exist in group)
+    // We assume contactIds are valid strings. We check persistence in DB.
+    // Also ensures we don't try to delete things that aren't there.
+    const present = await prisma.contactGroup.findMany({
+      where: {
+        groupId,
+        contactId: { in: contactIds }
+      },
+      select: { contactId: true }
+    });
+    const presentIds = present.map(p => p.contactId);
+
+    // 2. Delete them
+    if (presentIds.length > 0) {
+      await prisma.contactGroup.deleteMany({
+        where: {
+          groupId,
+          contactId: { in: presentIds }
+        }
+      });
+    }
+
+    return { groupId, removedContactIds: presentIds };
+  }
 }

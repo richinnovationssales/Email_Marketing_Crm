@@ -53,7 +53,29 @@ export class ContactController {
         res.status(StatusCodes.NOT_FOUND).json({ message: 'Contact not found' });
         return;
       }
-      res.json(contact);
+
+      // Transform customFieldValues to normalized structure
+      const customFields: Record<string, any> = {};
+      if ((contact as any).customFieldValues) {
+        (contact as any).customFieldValues.forEach((cfv: any) => {
+          customFields[cfv.customFieldId] = {
+            id: cfv.id,
+            value: cfv.value,
+            customFieldId: cfv.customFieldId,
+            fieldKey: cfv.customField?.fieldKey,
+            name: cfv.customField?.name,
+            type: cfv.customField?.type,
+            isRequired: cfv.customField?.isRequired,
+            options: cfv.customField?.options,
+            helpText: cfv.customField?.helpText
+          };
+        });
+      }
+
+      // Remove raw customFieldValues and add normalized customFields
+      const { customFieldValues, ...contactData } = contact as any;
+
+      res.json({ ...contactData, customFields });
     } catch (error) {
       console.error('Error fetching contact:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
