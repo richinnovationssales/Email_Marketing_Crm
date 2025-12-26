@@ -2,11 +2,19 @@ import { Contact } from '../../core/entities/Contact';
 import prisma from '../../infrastructure/database/prisma';
 
 export class ContactRepository {
-  async create(data: Contact, clientId: string, userId: string): Promise<Contact> {
+  async create(data: Contact, clientId: string, userId: string, groupId?: string): Promise<Contact> {
     const { customFields, ...contactData } = data;
 
     // Create transaction to handle both contact and custom fields
     return await prisma.$transaction(async (tx) => {
+      // Verify group ownership if groupId is provided
+      if (groupId) {
+        const group = await tx.group.findFirst({ where: { id: groupId, clientId } });
+        if (!group) {
+          throw new Error('Group not found or does not belong to this client');
+        }
+      }
+
       const contact = await tx.contact.create({
         data: {
           ...contactData,
@@ -42,6 +50,16 @@ export class ContactRepository {
             }
           });
         }));
+      }
+
+      // Assign to group if groupId is provided
+      if (groupId) {
+        await tx.contactGroup.create({
+          data: {
+            contactId: contact.id,
+            groupId
+          }
+        });
       }
 
       // Re-fetch to return complete object including new custom fields
