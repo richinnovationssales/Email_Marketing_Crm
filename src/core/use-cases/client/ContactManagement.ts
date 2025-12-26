@@ -1,10 +1,24 @@
 import { ContactRepository } from '../../../infrastructure/repositories/ContactRepository';
 import { Contact } from '../../entities/Contact';
 
+import { CustomFieldValidator } from '../../services/CustomFieldValidator';
+
 export class ContactManagement {
-  constructor(private contactRepository: ContactRepository) { }
+  private customFieldValidator: CustomFieldValidator;
+
+  constructor(private contactRepository: ContactRepository) {
+    this.customFieldValidator = new CustomFieldValidator();
+  }
 
   async create(data: Contact, clientId: string, userId: string): Promise<Contact> {
+    // Validate custom fields
+    if (data.customFields) {
+      data.customFields = await this.customFieldValidator.validate(clientId, data.customFields);
+    } else {
+      // Run validation even if no custom fields provided, to check for required fields
+      await this.customFieldValidator.validate(clientId, {});
+    }
+
     return this.contactRepository.create(data, clientId, userId);
   }
 
@@ -17,6 +31,9 @@ export class ContactManagement {
   }
 
   async update(id: string, data: Partial<Contact>, clientId: string): Promise<Contact | null> {
+    if (data.customFields) {
+      data.customFields = await this.customFieldValidator.validate(clientId, data.customFields, true);
+    }
     return this.contactRepository.update(id, data, clientId);
   }
 
