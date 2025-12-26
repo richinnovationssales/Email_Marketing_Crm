@@ -10,7 +10,7 @@ export class BulkContactUpload {
     this.customFieldValidator = new CustomFieldValidator();
   }
 
-  async execute(filePath: string, clientId: string, userId: string): Promise<{ success: number; failed: number }> {
+  async execute(filePath: string, clientId: string, userId: string, groupId?: string): Promise<{ success: number; failed: number }> {
     const contacts: any[] = [];
     return new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
@@ -46,7 +46,7 @@ export class BulkContactUpload {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 customFields: validatedCustomFields
-              }, clientId, userId);
+              }, clientId, userId, groupId);
 
               successCount++;
             } catch (error) {

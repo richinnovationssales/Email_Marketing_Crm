@@ -10,7 +10,7 @@ export class ContactManagement {
     this.customFieldValidator = new CustomFieldValidator();
   }
 
-  async create(data: Contact, clientId: string, userId: string): Promise<Contact> {
+  async create(data: Contact, clientId: string, userId: string, groupId?: string): Promise<Contact> {
     // Validate custom fields
     if (data.customFields) {
       data.customFields = await this.customFieldValidator.validate(clientId, data.customFields);
@@ -19,7 +19,7 @@ export class ContactManagement {
       await this.customFieldValidator.validate(clientId, {});
     }
 
-    return this.contactRepository.create(data, clientId, userId);
+    return this.contactRepository.create(data, clientId, userId, groupId);
   }
 
   async findAll(clientId: string, cursor?: string, limit?: number): Promise<{ data: Contact[], nextCursor: string | null }> {

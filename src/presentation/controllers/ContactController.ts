@@ -20,7 +20,8 @@ export class ContactController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
         return;
       }
-      const contact = await contactManagementUseCase.create(req.body, req.user.clientId, req.user.id);
+      const { groupId, ...contactData } = req.body;
+      const contact = await contactManagementUseCase.create(contactData, req.user.clientId, req.user.id, groupId);
       res.status(StatusCodes.CREATED).json(contact);
     } catch (error) {
       console.error('Error creating contact:', error);
@@ -136,8 +137,14 @@ export class ContactController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'File is missing' });
         return;
       }
-      await bulkContactUploadUseCase.execute(req.file.path, req.user.clientId, req.user.id);
-      res.status(StatusCodes.OK).json({ message: 'Contacts uploaded successfully' });
+
+      const groupId = req.body.groupId; // Extract groupId from form data
+      const result = await bulkContactUploadUseCase.execute(req.file.path, req.user.clientId, req.user.id, groupId);
+      res.status(StatusCodes.OK).json({
+        success: result.success,
+        failed: result.failed,
+        message: `Bulk upload completed – ${result.success} contacts created, ${result.failed} rows skipped due to validation errors.`
+      });
     } catch (error) {
       console.error('Error uploading contacts:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
