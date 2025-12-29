@@ -1,3 +1,4 @@
+// scripts/createSuperAdmin.ts
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -9,14 +10,17 @@ async function main() {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const superAdmin = await prisma.admin.create({
-    data: {
-      email: email,
+  await prisma.admin.upsert({
+    where: { email },
+    update: { password: hashedPassword, role: 'SUPER_ADMIN' },
+    create: {
+      email,
       password: hashedPassword,
+      role: 'SUPER_ADMIN',
     },
   });
 
-  console.log('Super Admin created:', superAdmin);
+  console.log('Super Admin created/updated:', email);
 }
 
 main()

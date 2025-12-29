@@ -7,3 +7,5 @@ node_modules
 
 /dist
 *.md
+
+*.postman_collection.json

@@ -1,3 +1,4 @@
+// src/presentation/controllers/AuthController.ts
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { Auth } from '../../core/use-cases/Auth';
