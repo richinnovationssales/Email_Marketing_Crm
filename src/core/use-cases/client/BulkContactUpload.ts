@@ -22,27 +22,28 @@ export class BulkContactUpload {
 
           for (const contactData of contacts) {
             try {
-              // Separate standard fields from potential custom fields
-              // This is a naive separation assuming standard fields are known.
-              // In reality, we might look up what keys are NOT standard.
-              // For now, let's extract standard fields explicitly.
-              const { email, firstName, lastName, ...rest } = contactData;
+              // 1. Identify Core Fields
+              const { email, ...potentialCustomFields } = contactData;
 
               if (!email) {
                 failureCount++;
                 continue;
               }
 
-              // Validate custom fields (the rest)
-              // We pass 'rest' as potential custom fields
-              const validatedCustomFields = await this.customFieldValidator.validate(clientId, rest);
+              // 2. Prepare data for creation
+              // We pass everything except email as customFields.
+              const customFields = { ...potentialCustomFields };
+
+              // Validate custom fields
+              const validatedCustomFields = await this.customFieldValidator.validate(clientId, customFields);
 
               await this.contactRepository.create({
                 id: '', // Will be generated
                 clientId,
                 email,
-                firstName,
-                lastName,
+                // We don't populate core firstName/lastName anymore, as they are custom fields
+                firstName: null,
+                lastName: null,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 customFields: validatedCustomFields

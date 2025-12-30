@@ -11,6 +11,20 @@ export class ContactManagement {
   }
 
   async create(data: Contact, clientId: string, userId: string, groupId?: string): Promise<Contact> {
+    // Map legacy/root fields to custom fields
+    if (!data.customFields) {
+      data.customFields = {};
+    }
+
+    if (data.firstName) {
+      data.customFields['firstName'] = data.firstName;
+      data.firstName = null;
+    }
+    if (data.lastName) {
+      data.customFields['lastName'] = data.lastName;
+      data.lastName = null;
+    }
+
     // Validate custom fields
     if (data.customFields) {
       data.customFields = await this.customFieldValidator.validate(clientId, data.customFields);

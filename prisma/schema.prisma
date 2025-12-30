@@ -110,6 +110,8 @@ model Contact {
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
   createdBy         User                      @relation(fields: [createdById], references: [id])
+  nameValueId       String?                   @unique
+  nameValue         ContactCustomFieldValue?  @relation("ContactNameIdentity", fields: [nameValueId], references: [id])
 
   @@unique([email, clientId])
 }
@@ -187,6 +189,7 @@ model CustomField {
   helpText        String? // Helper text for users
   displayOrder    Int                       @default(0) // For UI ordering
   isActive        Boolean                   @default(true) // Soft delete support
+  isNameField     Boolean                   @default(false) // Marks this field as the source of the Contact's display name
   values          ContactCustomFieldValue[]
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
@@ -196,14 +199,15 @@ model CustomField {
 }
 
 model ContactCustomFieldValue {
-  id            String      @id @default(cuid())
-  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  contactId     String
-  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
-  customFieldId String
-  value         String // Stored as string, parsed based on field type
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  contact         Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId       String
+  customField     CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+  customFieldId   String
+  value           String // Stored as string, parsed based on field type
+  contactIdentity Contact?    @relation("ContactNameIdentity")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@unique([contactId, customFieldId])
   @@index([customFieldId])

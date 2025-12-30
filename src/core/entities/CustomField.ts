@@ -24,6 +24,7 @@ export interface CustomField {
     helpText?: string | null;
     displayOrder: number;
     isActive: boolean;
+    isNameField: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

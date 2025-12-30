@@ -78,7 +78,8 @@ export class ClientRegistrationUseCase {
                         validationRegex: fieldDef.validationRegex,
                         helpText: fieldDef.helpText,
                         displayOrder: fieldDef.displayOrder,
-                        isActive: true
+                        isActive: true,
+                        isNameField: fieldDef.isNameField || false
                     }
                 });
             }

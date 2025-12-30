@@ -10,6 +10,7 @@ export interface CustomFieldDefinition {
     validationRegex?: string;
     helpText?: string;
     displayOrder: number;
+    isNameField?: boolean; // New optional property
 }
 
 
@@ -37,7 +38,8 @@ export const getDefaultCustomFields = (): CustomFieldDefinition[] => {
             type: CustomFieldType.TEXT,
             isRequired: true,
             helpText: 'Contact\'s last name',
-            displayOrder: 3
+            displayOrder: 3,
+            isNameField: true // Set as default name field
         },
         {
             name: 'Date of Birth',
@@ -65,15 +67,7 @@ export const getDefaultCustomFields = (): CustomFieldDefinition[] => {
             displayOrder: 6
         },
 
-        {
-            name: 'Email',
-            fieldKey: 'email',
-            type: CustomFieldType.EMAIL,
-            isRequired: true,
-            validationRegex: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$',
-            helpText: 'Contact\'s email address',
-            displayOrder: 7
-        },
+
         {
             name: 'Phone',
             fieldKey: 'phone',

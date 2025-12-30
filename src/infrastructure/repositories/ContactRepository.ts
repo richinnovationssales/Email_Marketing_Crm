@@ -15,41 +15,49 @@ export class ContactRepository {
         }
       }
 
+      // Step 1: Create Contact (nameValueId initially null)
       const contact = await tx.contact.create({
         data: {
           ...contactData,
           clientId,
           createdById: userId
-        },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              createdAt: true,
-              updatedAt: true
-            }
-          },
-          customFieldValues: {
-            include: { customField: true }
-          }
         }
       });
 
-      // Handle custom fields if present
+      let identityValueId: string | null = null;
+
+      // Step 2: Handle custom fields
       if (customFields && Object.keys(customFields).length > 0) {
-        // Since we have the customFieldId provided in validated data (from validator service)
+        // Fetch custom fields to identify which one is the name field
+        const clientCustomFields = await tx.customField.findMany({
+          where: { clientId, isActive: true }
+        });
+
+        // Loop through provided values and create records
         await Promise.all(Object.entries(customFields).map(async ([customFieldId, value]) => {
-          // Because our validator returns valid customFieldId -> value map
-          await tx.contactCustomFieldValue.create({
+          const fieldDef = clientCustomFields.find(f => f.id === customFieldId);
+
+          const createdValue = await tx.contactCustomFieldValue.create({
             data: {
               contactId: contact.id,
               customFieldId,
               value
             }
           });
+
+          // Check if this is the identity field
+          if (fieldDef?.isNameField) {
+            identityValueId = createdValue.id;
+          }
         }));
+      }
+
+      // Step 3: Link identity field if found
+      if (identityValueId) {
+        await tx.contact.update({
+          where: { id: contact.id },
+          data: { nameValueId: identityValueId }
+        });
       }
 
       // Assign to group if groupId is provided
@@ -63,9 +71,6 @@ export class ContactRepository {
       }
 
       // Re-fetch to return complete object including new custom fields
-      // Or just return what we have if we construct the response object manually, 
-      // but re-fetch ensures consistency with what findById returns structure-wise 
-      // primarily for the nested relations.
       return await tx.contact.findUniqueOrThrow({
         where: { id: contact.id },
         include: {
@@ -80,7 +85,8 @@ export class ContactRepository {
           },
           customFieldValues: {
             include: { customField: true }
-          }
+          },
+          nameValue: true // Include the identity value relation
         }
       });
     });
@@ -103,6 +109,14 @@ export class ContactRepository {
             role: true,
             createdAt: true,
             updatedAt: true
+          }
+        },
+        customFieldValues: {
+          select: {
+            id: true,
+            customFieldId: true,
+            value: true,
+            contactId: true,
           }
         }
       }

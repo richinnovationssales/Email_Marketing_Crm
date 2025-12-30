@@ -12,8 +12,22 @@ export class CustomFieldValidator {
         const customFields = await this.customFieldRepository.findAllByClient(clientId);
         const validatedFields: Record<string, any> = {};
 
+        // Identify the name field for this client
+        const nameField = customFields.find(f => f.isNameField);
+        let nameFieldProvided = false;
+
         for (const field of customFields) {
             const value = data[field.fieldKey];
+
+            // Check if this is the name field
+            if (field.isNameField) {
+                if (value !== undefined && value !== null && value !== '') {
+                    nameFieldProvided = true;
+                } else if (!isUpdate) {
+                    // Name field is mandatory on creation
+                    throw new Error(`Missing required identity field: ${field.name}`);
+                }
+            }
 
             // Check required fields
             if (field.isRequired && !isUpdate && (value === undefined || value === null || value === '')) {
@@ -48,7 +62,10 @@ export class CustomFieldValidator {
             }
         }
 
-        // Check for unknown fields? For now, we ignore extra fields in data to be safe/flexible.
+        // Final check: If it's a creation, ensure name field was provided
+        if (!isUpdate && nameField && !nameFieldProvided) {
+            throw new Error(`Missing required identity field: ${nameField.name}`);
+        }
 
         return validatedFields;
     }
