@@ -46,9 +46,7 @@ export class ContactRepository {
           });
 
           // Check if this is the identity field
-          if (fieldDef?.isNameField) {
-            identityValueId = createdValue.id;
-          }
+          if (fieldDef?.isNameField) identityValueId = createdValue.id;
         }));
       }
 
