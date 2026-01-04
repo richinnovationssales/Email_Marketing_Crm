@@ -41,7 +41,7 @@ const campaignScheduler = new CampaignScheduler(sendCampaignUseCase, campaignRep
 campaignScheduler.start();
 
 const server = app.listen(port, () => {
-  Logger.info(`Server is running on port ${port}`);
+  Logger.info(`Server is running on port : ${port}`);
 });
 
 const gracefulShutdown = (signal: string) => {
