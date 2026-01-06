@@ -1,3 +1,4 @@
+// src/presentation/middlewares/authMiddleware.ts
 import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { StatusCodes } from 'http-status-codes';
