@@ -1,3 +1,4 @@
+// src/presentation/routes/campaignRoutes.ts
 import { Router } from 'express';
 import { CampaignController } from '../controllers/CampaignController';
 import { authMiddleware, checkClientRole } from '../middlewares/authMiddleware';

@@ -1,7 +1,8 @@
-import { ContactRepository } from '../../../infrastructure/repositories/ContactRepository';
-import { CustomFieldValidator } from '../../services/CustomFieldValidator';
-import * as fs from 'fs';
-import csv from 'csv-parser';
+// src/core/use-cases/client/BulkContactUpload.ts
+import { ContactRepository } from "../../../infrastructure/repositories/ContactRepository";
+import { CustomFieldValidator } from "../../services/CustomFieldValidator";
+import * as fs from "fs";
+import csv from "csv-parser";
 
 export class BulkContactUpload {
   private customFieldValidator: CustomFieldValidator;
@@ -10,13 +11,18 @@ export class BulkContactUpload {
     this.customFieldValidator = new CustomFieldValidator();
   }
 
-  async execute(filePath: string, clientId: string, userId: string, groupId?: string): Promise<{ success: number; failed: number }> {
+  async execute(
+    filePath: string,
+    clientId: string,
+    userId: string,
+    groupId?: string
+  ): Promise<{ success: number; failed: number }> {
     const contacts: any[] = [];
     return new Promise((resolve, reject) => {
       fs.createReadStream(filePath)
         .pipe(csv())
-        .on('data', (data: any) => contacts.push(data))
-        .on('end', async () => {
+        .on("data", (data: any) => contacts.push(data))
+        .on("end", async () => {
           let successCount = 0;
           let failureCount = 0;
 
@@ -35,23 +41,28 @@ export class BulkContactUpload {
               const customFields = { ...potentialCustomFields };
 
               // Validate custom fields
-              const validatedCustomFields = await this.customFieldValidator.validate(clientId, customFields);
+              const validatedCustomFields =
+                await this.customFieldValidator.validate(
+                  clientId,
+                  customFields
+                );
 
-              await this.contactRepository.create({
-                id: '', // Will be generated
+              await this.contactRepository.create(
+                {
+                  email,
+                  customFields: validatedCustomFields,
+                },
                 clientId,
-                email,
-                // We don't populate core firstName/lastName anymore, as they are custom fields
-                firstName: null,
-                lastName: null,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                customFields: validatedCustomFields
-              }, clientId, userId, groupId);
+                userId,
+                groupId
+              );
 
               successCount++;
             } catch (error) {
-              console.error(`Skipping contact ${contactData.email} due to validation error:`, error);
+              console.error(
+                `Skipping contact ${contactData.email} due to validation error:`,
+                error
+              );
               failureCount++;
             }
           }
@@ -59,7 +70,7 @@ export class BulkContactUpload {
           fs.unlinkSync(filePath); // Clean up the uploaded file
           resolve({ success: successCount, failed: failureCount });
         })
-        .on('error', (error: any) => {
+        .on("error", (error: any) => {
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }

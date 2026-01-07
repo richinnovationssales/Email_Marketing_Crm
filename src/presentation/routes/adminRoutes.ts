@@ -1,3 +1,4 @@
+// src/presentation/routes/adminRoutes.ts
 import { Router } from 'express';
 import { ClientController } from '../controllers/admin/ClientController';
 import { AdminUserController } from '../controllers/admin/AdminUserController';
@@ -33,8 +34,6 @@ router.patch('/clients/:id/reject', clientController.rejectClient);
 router.patch('/clients/:id/deactivate', clientController.deactivateClient);
 router.patch('/clients/:id/reactivate', clientController.reactivateClient);
 router.get('/clients/:id/analytics', clientController.getClientAnalytics);
-
-
 router.post('/clients/onboard', clientController.onboardClient);
 
 // Plan Management (All Admins)
