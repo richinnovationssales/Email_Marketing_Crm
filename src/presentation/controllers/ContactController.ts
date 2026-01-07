@@ -123,6 +123,30 @@ export class ContactController {
     }
   }
 
+  async bulkDeleteContacts(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid or empty "ids" array provided.' });
+        return;
+      }
+
+      const deletedCount = await contactManagementUseCase.deleteMany(ids, req.user.clientId);
+      res.status(StatusCodes.OK).json({
+        message: `${deletedCount} contacts deleted successfully.`,
+        deletedCount
+      });
+    } catch (error) {
+      console.error('Error deleting contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
   async bulkUpload(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user?.clientId) {

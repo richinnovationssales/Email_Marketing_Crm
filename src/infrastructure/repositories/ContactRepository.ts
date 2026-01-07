@@ -239,11 +239,36 @@ export class ContactRepository {
   }
 
   async delete(id: string, clientId: string): Promise<Contact | null> {
-    // First, verify the contact belongs to the client
-    const contact = await prisma.contact.findFirst({ where: { id, clientId } });
-    if (!contact) {
-      return null;
-    }
-    return await prisma.contact.delete({ where: { id } });
+    const existing = await prisma.contact.findUnique({
+      where: { id, clientId },
+    });
+    if (!existing) return null;
+
+    // Manually delete related ContactGroup entries first
+    await prisma.contactGroup.deleteMany({
+      where: { contactId: id },
+    });
+
+    return prisma.contact.delete({
+      where: { id },
+    });
+  }
+
+  async deleteMany(ids: string[], clientId: string): Promise<number> {
+    const [, result] = await prisma.$transaction([
+      prisma.contactGroup.deleteMany({
+        where: {
+          contactId: { in: ids },
+          contact: { clientId },
+        },
+      }),
+      prisma.contact.deleteMany({
+        where: {
+          id: { in: ids },
+          clientId,
+        },
+      }),
+    ]);
+    return result.count;
   }
 }

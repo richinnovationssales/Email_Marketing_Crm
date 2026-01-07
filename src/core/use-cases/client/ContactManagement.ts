@@ -54,4 +54,8 @@ export class ContactManagement {
   async delete(id: string, clientId: string): Promise<Contact | null> {
     return this.contactRepository.delete(id, clientId);
   }
+
+  async deleteMany(ids: string[], clientId: string): Promise<number> {
+    return this.contactRepository.deleteMany(ids, clientId);
+  }
 }
