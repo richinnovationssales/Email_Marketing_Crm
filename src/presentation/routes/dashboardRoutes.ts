@@ -1,3 +1,4 @@
+// src/presentation/routes/dashboardRoutes.ts
 import { Router } from 'express';
 import { DashboardController } from '../controllers/DashboardController';
 import { authMiddleware } from '../middlewares/authMiddleware';

@@ -1,3 +1,4 @@
+// src/presentation/routes/templateRoutes.ts
 import { Router } from 'express';
 import { TemplateController } from '../controllers/TemplateController';
 import { authMiddleware } from '../middlewares/authMiddleware';
