@@ -43,7 +43,12 @@ export class AdminAuth {
       { expiresIn: "24h" }
     );
 
-    return { token, user: admin };
+    const { password: _password, ...safeAdmin } = admin;
+
+    return {
+      token,
+      user: safeAdmin,
+    };
   }
 
   async createAdmin(email: string, password: string, role: AdminRole) {
