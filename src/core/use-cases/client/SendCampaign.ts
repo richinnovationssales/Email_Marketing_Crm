@@ -2,15 +2,23 @@ import { CampaignRepository } from '../../../infrastructure/repositories/Campaig
 import { ContactGroupRepository } from '../../../infrastructure/repositories/ContactGroupRepository';
 import { EmailService } from '../../../infrastructure/services/EmailService';
 import { MailgunService } from '../../../infrastructure/services/MailgunService';
+import { SuppressionListService } from '../../../infrastructure/services/SuppressionListService';
+import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
 import { CampaignStatus } from '@prisma/client';
 
 export class SendCampaign {
+  private suppressionListService: SuppressionListService;
+  private emailEventRepository: EmailEventRepository;
+
   constructor(
     private campaignRepository: CampaignRepository,
     private contactGroupRepository: ContactGroupRepository,
     private emailService: EmailService,
     private mailgunService?: MailgunService
-  ) { }
+  ) {
+    this.suppressionListService = new SuppressionListService();
+    this.emailEventRepository = new EmailEventRepository();
+  }
 
   async execute(campaignId: string, clientId: string): Promise<void> {
     const campaign = await this.campaignRepository.findById(campaignId, clientId);
@@ -30,9 +38,17 @@ export class SendCampaign {
 
     // Deduplicate contacts by email
     const uniqueContacts = [...new Map(contacts.map(item => [item['email'], item])).values()];
-    const recipientEmails = uniqueContacts.map(contact => contact.email);
+    let recipientEmails = uniqueContacts.map(contact => contact.email);
 
-    console.log(`Sending campaign "${campaign.name}" to ${recipientEmails.length} unique recipients`);
+    console.log(`Campaign "${campaign.name}" has ${recipientEmails.length} unique recipients`);
+
+    // Filter out suppressed emails (bounces, unsubscribes, complaints)
+    recipientEmails = await this.suppressionListService.filterSuppressedEmails(recipientEmails, clientId);
+    console.log(`After suppression filtering: ${recipientEmails.length} recipients remaining`);
+
+    if (recipientEmails.length === 0) {
+      throw new Error('No valid recipients after filtering suppressed emails');
+    }
 
     // Update status to SENDING
     await this.campaignRepository.update(campaignId, { status: CampaignStatus.SENDING }, clientId);
@@ -58,6 +74,17 @@ export class SendCampaign {
           .filter(r => r.status === 'success')
           .map(r => r.messageId);
 
+        // Log SENT events for each recipient
+        for (const email of recipientEmails) {
+          await this.emailEventRepository.create({
+            clientId,
+            campaignId,
+            contactEmail: email,
+            eventType: 'SENT',
+            mailgunId: messageIds[0] || undefined,
+          });
+        }
+
         // Update campaign with Mailgun metadata
         await this.campaignRepository.update(
           campaignId,
@@ -75,8 +102,16 @@ export class SendCampaign {
         console.log('Using fallback EmailService (Nodemailer)');
         
         // Fallback to sequential sending via Nodemailer
-        for (const contact of uniqueContacts) {
+        for (const contact of uniqueContacts.filter(c => recipientEmails.includes(c.email))) {
           await this.emailService.sendMail(contact.email, campaign.subject, campaign.content);
+          
+          // Log SENT event
+          await this.emailEventRepository.create({
+            clientId,
+            campaignId,
+            contactEmail: contact.email,
+            eventType: 'SENT',
+          });
         }
 
         await this.campaignRepository.update(
@@ -100,3 +135,4 @@ export class SendCampaign {
     }
   }
 }
+
