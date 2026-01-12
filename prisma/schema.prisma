@@ -43,6 +43,7 @@ model Client {
   activityLogs        ClientActivityLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  suppressionLists    SuppressionList[]
 }
 
 enum UserRole {
@@ -80,21 +81,28 @@ enum CampaignStatus {
 }
 
 model Campaign {
-  id                String         @id @default(cuid())
+  id                String             @id @default(cuid())
   name              String
   subject           String
   content           String
-  status            CampaignStatus @default(DRAFT)
-  isRecurring       Boolean        @default(false)
+  status            CampaignStatus     @default(DRAFT)
+  isRecurring       Boolean            @default(false)
   recurringSchedule String? // e.g., cron string
   groups            Group[]
-  client            Client         @relation(fields: [clientId], references: [id])
+  client            Client             @relation(fields: [clientId], references: [id])
   clientId          String
   emailEvents       EmailEvent[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  createdById       String
-  createdBy         User           @relation(fields: [createdById], references: [id])
+  analytics         CampaignAnalytics?
+
+  // Mailgun-specific fields
+  mailgunMessageIds String? // JSON array of Mailgun message IDs
+  mailgunTags       String[] // Tags for tracking
+  sentAt            DateTime? // Timestamp when campaign was sent
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 model Contact {
@@ -241,6 +249,47 @@ model CustomFieldRequest {
   updatedAt       DateTime        @updatedAt
 
   @@index([clientId, status])
+}
+
+model CampaignAnalytics {
+  id                String   @id @default(cuid())
+  campaign          Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId        String   @unique
+  totalSent         Int      @default(0)
+  totalDelivered    Int      @default(0)
+  totalOpened       Int      @default(0)
+  totalClicked      Int      @default(0)
+  totalBounced      Int      @default(0)
+  totalUnsubscribed Int      @default(0)
+  totalComplaints   Int      @default(0)
+  uniqueOpens       Int      @default(0)
+  uniqueClicks      Int      @default(0)
+  openRate          Float    @default(0)
+  clickRate         Float    @default(0)
+  bounceRate        Float    @default(0)
+  lastUpdated       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  @@index([campaignId])
+}
+
+enum SuppressionType {
+  BOUNCE
+  UNSUBSCRIBE
+  COMPLAINT
+}
+
+model SuppressionList {
+  id        String          @id @default(cuid())
+  email     String
+  type      SuppressionType
+  reason    String?
+  client    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  createdAt DateTime        @default(now())
+
+  @@unique([email, type, clientId])
+  @@index([clientId, type])
 }
 
 enum EmailEventType {

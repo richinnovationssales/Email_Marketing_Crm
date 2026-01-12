@@ -8,13 +8,31 @@ import { CampaignApproval } from '../../core/use-cases/client/CampaignApproval';
 import { SendCampaign } from '../../core/use-cases/client/SendCampaign';
 import { ContactGroupRepository } from '../../infrastructure/repositories/ContactGroupRepository';
 import { EmailService } from '../../infrastructure/services/EmailService';
+import { MailgunService } from '../../infrastructure/services/MailgunService';
 
 const campaignRepository = new CampaignRepository();
 const contactGroupRepository = new ContactGroupRepository();
 const emailService = new EmailService();
+
+// Initialize MailgunService only if USE_MAILGUN is enabled
+let mailgunService: MailgunService | undefined;
+try {
+  if (process.env.USE_MAILGUN === 'true') {
+    mailgunService = new MailgunService();
+    console.log('MailgunService initialized for campaigns');
+  }
+} catch (error) {
+  console.warn('Failed to initialize MailgunService, falling back to EmailService:', error);
+}
+
 const campaignManagementUseCase = new CampaignManagement(campaignRepository);
 const campaignApprovalUseCase = new CampaignApproval(campaignRepository);
-const sendCampaignUseCase = new SendCampaign(campaignRepository, contactGroupRepository, emailService);
+const sendCampaignUseCase = new SendCampaign(
+  campaignRepository, 
+  contactGroupRepository, 
+  emailService,
+  mailgunService
+);
 
 export class CampaignController {
   async createCampaign(req: AuthRequest, res: Response): Promise<void> {

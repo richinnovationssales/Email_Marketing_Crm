@@ -9,8 +9,12 @@ export interface Campaign {
   isRecurring: boolean;
   recurringSchedule: string | null;
   clientId: string;
+  mailgunMessageIds?: string | null;
+  mailgunTags?: string[];
+  sentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
+
 
 
