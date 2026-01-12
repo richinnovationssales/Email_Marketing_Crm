@@ -11,9 +11,15 @@ import groupRoutes from './groupRoutes';
 import contactGroupRoutes from './contactGroupRoutes';
 import dashboardRoutes from './dashboardRoutes';
 import customFieldRoutes from './customFieldRoutes';
+import webhookRoutes from './webhookRoutes';
+import analyticsRoutes from './analyticsRoutes';
 
 const router = Router();
 
+// Public routes (no auth required)
+router.use('/webhooks', webhookRoutes);
+
+// Auth routes
 router.use('/auth', authRoutes);
 router.use('/admin', adminRoutes);
 router.use('/users', userRoutes);
@@ -25,5 +31,6 @@ router.use('/groups', groupRoutes);
 router.use('/contact-groups', contactGroupRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/custom-fields', customFieldRoutes);
+router.use('/analytics', analyticsRoutes);
 
 export default router;

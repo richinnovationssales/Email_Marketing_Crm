@@ -1,6 +1,23 @@
 import FormData from 'form-data';
 import Mailgun from 'mailgun.js';
-// import type { MailgunMessageData, MessagesSendResult } from 'mailgun.js/interfaces/Messages';
+
+// Define message data type inline to avoid import issues
+interface MailgunMessageData {
+  from: string;
+  to: string | string[];
+  subject: string;
+  html?: string;
+  text?: string;
+  'o:tag'?: string[];
+  'recipient-variables'?: string;
+  [key: string]: any;
+}
+
+interface MessagesSendResult {
+  id: string;
+  message: string;
+  status?: number;
+}
 
 export interface SingleEmailParams {
   to: string;
@@ -78,9 +95,9 @@ export class MailgunService {
     }
 
     try {
-      const result = await this.mg.messages.create(this.domain, messageData);
+      const result = await this.mg.messages.create(this.domain, messageData as any);
       console.log(`Email sent to ${params.to}, Message ID: ${result.id}`);
-      return result;
+      return result as MessagesSendResult;
     } catch (error) {
       console.error(`Error sending email to ${params.to}:`, error);
       throw error;
@@ -123,10 +140,10 @@ export class MailgunService {
           messageData['recipient-variables'] = JSON.stringify(params.recipientVariables);
         }
 
-        const result = await this.mg.messages.create(this.domain, messageData);
+        const result = await this.mg.messages.create(this.domain, messageData as any);
         
         results.push({
-          messageId: result.id,
+          messageId: result.id || '',
           status: 'success',
           recipientsSent: batch.length,
         });
