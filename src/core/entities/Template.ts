@@ -7,3 +7,16 @@ export interface Template {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface CreateTemplateDTO {
+  name: string;
+  subject: string;
+  content: string;
+}
+
+
+export interface UpdateTemplateDTO {
+  name?: string;
+  subject?: string;
+  content?: string;
+}
