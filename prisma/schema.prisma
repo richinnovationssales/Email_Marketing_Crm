@@ -150,6 +150,7 @@ model ContactGroup {
 model Template {
   id          String   @id @default(cuid())
   name        String
+  subject     String
   content     String
   client      Client   @relation(fields: [clientId], references: [id])
   clientId    String
