@@ -13,12 +13,28 @@ enum AdminRole {
 }
 
 model Admin {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  password  String
-  role      AdminRole @default(ADMIN)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  role          AdminRole      @default(ADMIN)
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String?
+  adminId   String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin     Admin?   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([adminId])
 }
 
 model Client {
@@ -68,6 +84,7 @@ model User {
   campaigns           Campaign[]
   groups              Group[]
   templates           Template[]
+  refreshTokens       RefreshToken[]
 }
 
 enum CampaignStatus {
@@ -80,19 +97,38 @@ enum CampaignStatus {
   STOPPED
 }
 
+enum RecurringFrequency {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
 model Campaign {
-  id                String             @id @default(cuid())
+  id                String         @id @default(cuid())
   name              String
   subject           String
   content           String
-  status            CampaignStatus     @default(DRAFT)
-  isRecurring       Boolean            @default(false)
-  recurringSchedule String? // e.g., cron string
-  groups            Group[]
-  client            Client             @relation(fields: [clientId], references: [id])
-  clientId          String
-  emailEvents       EmailEvent[]
-  analytics         CampaignAnalytics?
+  status            CampaignStatus @default(DRAFT)
+  isRecurring       Boolean        @default(false)
+  recurringSchedule String? // Generated cron string (computed from other fields)
+
+  // Enhanced recurring scheduling fields
+  recurringFrequency  RecurringFrequency @default(NONE)
+  recurringTime       String? // Time in HH:mm format (24-hour), defaults to 09:00 if not specified
+  recurringTimezone   String? // IANA timezone (e.g., "Asia/Kolkata")
+  recurringDaysOfWeek Int[] // 0-6 for Sunday-Saturday (for WEEKLY/BIWEEKLY)
+  recurringDayOfMonth Int? // 1-31 (for MONTHLY)
+  recurringStartDate  DateTime? // When recurring should start
+  recurringEndDate    DateTime? // Optional end date for recurring
+
+  groups      Group[]
+  client      Client             @relation(fields: [clientId], references: [id])
+  clientId    String
+  emailEvents EmailEvent[]
+  analytics   CampaignAnalytics?
 
   // Mailgun-specific fields
   mailgunMessageIds String? // JSON array of Mailgun message IDs

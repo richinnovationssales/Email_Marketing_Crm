@@ -1,6 +1,7 @@
 // src/presentation/controllers/CampaignController.ts
 import { Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
+import { ZodError } from 'zod';
 import { CampaignManagement } from '../../core/use-cases/client/CampaignManagement';
 import { CampaignRepository } from '../../infrastructure/repositories/CampaignRepository';
 import { AuthRequest } from '../middlewares/authMiddleware';
@@ -48,6 +49,13 @@ export class CampaignController {
       const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId, req.user.id);
       res.status(StatusCodes.CREATED).json(campaign);
     } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(StatusCodes.BAD_REQUEST).json({ 
+          message: 'Validation error', 
+          errors: error.issues 
+        });
+        return;
+      }
       console.error('Error creating campaign:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
@@ -98,6 +106,13 @@ export class CampaignController {
       }
       res.json(campaign);
     } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(StatusCodes.BAD_REQUEST).json({ 
+          message: 'Validation error', 
+          errors: error.issues 
+        });
+        return;
+      }
       console.error('Error updating campaign:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
@@ -191,6 +206,42 @@ export class CampaignController {
       res.status(StatusCodes.OK).json({ message: 'Campaign sent successfully' });
     } catch (error) {
       console.error('Error sending campaign:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
+  /**
+   * Update recurring schedule for a campaign
+   * Only allows updates for DRAFT or APPROVED campaigns
+   */
+  async updateRecurringSchedule(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+      const { campaignId } = req.params;
+      const campaign = await campaignManagementUseCase.updateRecurringSchedule(
+        campaignId, 
+        req.body, 
+        req.user.clientId
+      );
+      if (!campaign) {
+        res.status(StatusCodes.NOT_FOUND).json({ 
+          message: 'Campaign not found or cannot be modified (must be in DRAFT or APPROVED status)' 
+        });
+        return;
+      }
+      res.json(campaign);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        res.status(StatusCodes.BAD_REQUEST).json({ 
+          message: 'Validation error', 
+          errors: error.issues 
+        });
+        return;
+      }
+      console.error('Error updating recurring schedule:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }
