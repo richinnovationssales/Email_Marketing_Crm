@@ -22,6 +22,7 @@ export const createCampaignSchema = z.object({
   subject: z.string().min(1, 'Email subject is required').max(500, 'Subject too long'),
   content: z.string().min(1, 'Email content is required'),
   groupIds: z.array(z.string().cuid()).optional(),
+  sendImmediately: z.boolean().optional().default(true),
   
   // Recurring schedule fields
   isRecurring: z.boolean().default(false),

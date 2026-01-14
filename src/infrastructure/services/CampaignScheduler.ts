@@ -66,19 +66,31 @@ export class CampaignScheduler {
     this.task = cron.schedule('* * * * *', async () => {
       try {
         const campaigns = await this.campaignRepository.findRecurring();
+
         
         for (const campaign of campaigns) {
           // Skip if already scheduled
           if (this.recurringTasks.has(campaign.id)) {
+            console.log('Campaign', campaign.id, 'is already scheduled');
             continue;
           }
           
-          // Skip if outside date range
+          // Skip and Stop if outside date range (expired)
           if (!this.isWithinDateRange(
             campaign.recurringStartDate, 
             campaign.recurringEndDate
           )) {
-            console.log(`Campaign ${campaign.id} is outside its active date range`);
+            // If the campaign has clearly ended, mark it as STOPPED to prevent future queries
+            if (campaign.recurringEndDate && new Date() > campaign.recurringEndDate) {
+                console.log(`Campaign ${campaign.id} has reached its end date. Marking as STOPPED.`);
+                try {
+                  await this.campaignRepository.update(campaign.id, { status: 'STOPPED' }, campaign.clientId);
+                } catch (err) {
+                   console.error(`Failed to stop campaign ${campaign.id}`, err);
+                }
+            } else {
+                console.log(`Campaign ${campaign.id} is outside its active date range (not started yet or ended)`);
+            }
             continue;
           }
           

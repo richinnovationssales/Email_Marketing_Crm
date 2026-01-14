@@ -68,13 +68,18 @@ export class MailgunService {
     this.fromName = fromName;
 
     const mailgun = new Mailgun(FormData);
+    
+    const baseUrl = process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net';
+    // Clean URL: remove trailing slash and /v3 if present (client adds it)
+    const cleanUrl = baseUrl.replace(/\/v3\/?$/, '').replace(/\/$/, '');
+    
     this.mg = mailgun.client({
       username: 'api',
       key: apiKey,
-      url: process.env.MAILGUN_BASE_URL || 'https://api.mailgun.net',
+      url: cleanUrl,
     });
 
-    console.log(`MailgunService initialized with domain: ${this.domain}`);
+    console.log(`MailgunService initialized with domain: ${this.domain}, url: ${cleanUrl}`);
   }
 
   /**

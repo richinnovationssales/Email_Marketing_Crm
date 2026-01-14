@@ -47,6 +47,35 @@ export class CampaignController {
         return;
       }
       const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId, req.user.id);
+      console.log('Campaign created', campaign.id);
+      // Handle Send Immediately
+      if ( !campaign.isRecurring) {
+        try {
+          // Auto-approve first
+
+          console.log('Auto-approving campaign', campaign.id);
+          await campaignApprovalUseCase.approve(campaign.id, req.user.clientId);
+          
+          // Then send
+          console.log('Sending campaign', campaign.id);
+          await sendCampaignUseCase.execute(campaign.id, req.user.clientId);
+          console.log('Campaign sent', campaign.id);
+          // Re-fetch campaign to get updated status
+          const updatedCampaign = await campaignManagementUseCase.findById(campaign.id, req.user.clientId);
+          res.status(StatusCodes.CREATED).json(updatedCampaign);
+          return;
+        } catch (error) {
+          console.error('Error in immediate send:', error);
+          // If sending fails, we still return the created campaign but with a warning or error log
+          // The campaign will be in APPROVED or DRAFT state depending on where it failed
+           res.status(StatusCodes.CREATED).json({
+            ...campaign,
+            warning: 'Campaign created but failed to send immediately. Please check logs.'
+           });
+           return;
+        }
+      }
+      console.log('Campaign created and returing outside', campaign.id);
       res.status(StatusCodes.CREATED).json(campaign);
     } catch (error) {
       if (error instanceof ZodError) {

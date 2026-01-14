@@ -74,6 +74,14 @@ export class SendCampaign {
           .filter(r => r.status === 'success')
           .map(r => r.messageId);
 
+        if (messageIds.length === 0) {
+          const errors = results
+            .filter(r => r.status === 'error')
+            .flatMap(r => r.errors?.map(e => `${e.recipient}: ${e.error}`) || []);
+            
+          throw new Error(`Failed to send email to any recipients. Mailgun errors: ${errors.join('; ')}`);
+        }
+
         // Log SENT events for each recipient
         for (const email of recipientEmails) {
           await this.emailEventRepository.create({
@@ -81,10 +89,10 @@ export class SendCampaign {
             campaignId,
             contactEmail: email,
             eventType: 'SENT',
-            mailgunId: messageIds[0] || undefined,
+            mailgunId: messageIds[0] || undefined, // Note: This assigns the same ID to all if batched; might need refinement for batching
           });
         }
-
+           
         // Update campaign with Mailgun metadata
         await this.campaignRepository.update(
           campaignId,

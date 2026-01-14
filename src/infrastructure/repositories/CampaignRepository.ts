@@ -200,7 +200,7 @@ export class CampaignRepository {
     return await prisma.campaign.findMany({ 
       where: { 
         isRecurring: true, 
-        status: 'APPROVED',
+        status: { in: ['APPROVED', 'DRAFT'] },
         recurringFrequency: { not: 'NONE' }
       },
       include: {
