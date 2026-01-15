@@ -52,4 +52,42 @@ export class ContactGroupController {
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }
+
+  async assignMultipleContactsToGroup(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+      const { contactIds, groupId } = req.body;
+      if (!Array.isArray(contactIds) || !groupId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid payload' });
+        return;
+      }
+      const result = await contactGroupManagementUseCase.assignMultipleContactsToGroup(contactIds, groupId, req.user.clientId);
+      res.status(StatusCodes.OK).json(result);
+    } catch (error) {
+      console.error('Error assigning multiple contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
+  async removeMultipleContactsFromGroup(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+      const { contactIds, groupId } = req.body;
+      if (!Array.isArray(contactIds) || !groupId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid payload' });
+        return;
+      }
+      const result = await contactGroupManagementUseCase.removeMultipleContactsFromGroup(contactIds, groupId, req.user.clientId);
+      res.status(StatusCodes.OK).json(result);
+    } catch (error) {
+      console.error('Error removing multiple contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
 }

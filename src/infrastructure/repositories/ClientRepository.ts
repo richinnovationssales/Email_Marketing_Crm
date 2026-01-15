@@ -3,24 +3,24 @@ import prisma from '../../infrastructure/database/prisma';
 import { Prisma } from '@prisma/client';
 
 export class ClientRepository {
-   async create(data: any): Promise<Client> {
-    const client = await prisma.client.create({
-        data: {
-            name: data.name,
-            isApproved: data.isApproved ?? false,
-            isActive: data.isActive ?? true,
-            plan: {
-                connect: { id: data.planId }   
+    async create(data: any): Promise<Client> {
+        const client = await prisma.client.create({
+            data: {
+                name: data.name,
+                isApproved: data.isApproved ?? false,
+                isActive: data.isActive ?? true,
+                plan: {
+                    connect: { id: data.planId }
+                },
+                planStartDate: data.planStartDate,
+                planRenewalDate: data.planRenewalDate,
+                remainingMessages: data.remainingMessages
             },
-            planStartDate: data.planStartDate,
-            planRenewalDate: data.planRenewalDate,
-            remainingMessages: data.remainingMessages
-        },
-        include: { plan: true }
-    });
+            include: { plan: true }
+        });
 
-    return client;
-}
+        return client;
+    }
 
 
     async findAll(): Promise<Client[]> {
@@ -48,6 +48,12 @@ export class ClientRepository {
         return clients;
     }
 
+    async findByName(name: string): Promise<Client | null> {
+        const client = await prisma.client.findFirst({ where: { name }, include: { plan: true } });
+        return client;
+    }
+
+
     async getAnalytics(clientId: string) {
         const [
             totalEmailsSent,
@@ -69,5 +75,56 @@ export class ClientRepository {
             remainingMessages: client?.remainingMessages
         };
     }
+
+    async findByIdWithDetails(id: string) {
+        const [client, counts] = await Promise.all([
+            prisma.client.findUnique({
+                where: { id },
+                include: {
+                    plan: true,
+                    users: {
+                        take: 10,
+                        orderBy: { createdAt: 'desc' },
+                        select: {
+                            id: true,
+                            email: true,
+                            role: true,
+                            clientId: true,
+                            createdAt: true,
+                            updatedAt: true
+                        }
+                    },
+                    contacts: {
+                        take: 10,
+                        orderBy: { createdAt: 'desc' }
+                    },
+                    groups: {
+                        take: 10,
+                        orderBy: { createdAt: 'desc' }
+                    },
+                    customFields: {
+                        orderBy: { displayOrder: 'asc' }
+                    }
+                }
+            }),
+            prisma.$transaction([
+                prisma.user.count({ where: { clientId: id } }),
+                prisma.contact.count({ where: { clientId: id } }),
+                prisma.group.count({ where: { clientId: id } }),
+                prisma.customField.count({ where: { clientId: id } })
+            ])
+        ]);
+
+        if (!client) return null;
+
+        return {
+            ...client,
+            usersCount: counts[0],
+            contactsCount: counts[1],
+            groupsCount: counts[2],
+            customFieldsCount: counts[3]
+        };
+    }
 }
+
 

@@ -6,11 +6,11 @@ import { AdminRole } from '../../entities/Admin';
 export class AdminAuth {
     constructor(private adminRepository: AdminRepository) { }
 
-    async login(email: string, password: string, isSuperAdmin: boolean = false): Promise<string | null> {
+    async login(email: string, password: string, isSuperAdmin: boolean = false): Promise<{ token: string, user: any } | null> {
         // Determine the expected role based on the isSuperAdmin flag
         const expectedRole = isSuperAdmin ? AdminRole.SUPER_ADMIN : AdminRole.ADMIN;
 
-        
+
         // Find admin by email and verify they have the expected role
         const admin = await this.adminRepository.findByEmailAndRole(email, expectedRole);
 
@@ -34,7 +34,7 @@ export class AdminAuth {
             { expiresIn: '24h' }
         );
 
-        return token;
+        return { token, user: admin };
     }
 
     async createAdmin(email: string, password: string, role: AdminRole): Promise<any> {

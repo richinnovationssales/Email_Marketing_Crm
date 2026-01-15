@@ -14,7 +14,11 @@ export class TemplateController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const template = await templateManagementUseCase.create(req.body, req.user.clientId);
+      if (!req.user?.id) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
+        return;
+      }
+      const template = await templateManagementUseCase.create(req.body, req.user.clientId, req.user.id);
       res.status(StatusCodes.CREATED).json(template);
     } catch (error) {
       console.error('Error creating template:', error);

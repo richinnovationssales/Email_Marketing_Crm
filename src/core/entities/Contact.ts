@@ -6,6 +6,8 @@ export interface Contact {
   clientId: string;
   createdAt: Date;
   updatedAt: Date;
+  customFields?: Record<string, any>;
+  nameValueId?: string | null;
 }
 
 

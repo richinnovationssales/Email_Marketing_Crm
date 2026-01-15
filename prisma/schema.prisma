@@ -13,36 +13,53 @@ enum AdminRole {
 }
 
 model Admin {
-  id        String    @id @default(cuid())
-  email     String    @unique
-  password  String
-  role      AdminRole @default(ADMIN)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  role          AdminRole      @default(ADMIN)
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String?
+  adminId   String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  admin     Admin?   @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([adminId])
 }
 
 model Client {
-  id                  String               @id @default(cuid())
-  name                String
-  isApproved          Boolean              @default(false)
-  isActive            Boolean              @default(true)
-  plan                Plan                 @relation(fields: [planId], references: [id])
-  planId              String
-  planStartDate       DateTime?
-  planRenewalDate     DateTime?
-  remainingMessages   Int?
-  users               User[]
-  campaigns           Campaign[]
-  contacts            Contact[]
-  groups              Group[]
-  templates           Template[]
-  employees           Employee[]
+  id                String     @id @default(cuid())
+  name              String
+  isApproved        Boolean    @default(false)
+  isActive          Boolean    @default(true)
+  plan              Plan       @relation(fields: [planId], references: [id])
+  planId            String
+  planStartDate     DateTime?
+  planRenewalDate   DateTime?
+  remainingMessages Int?
+  users             User[]
+  campaigns         Campaign[]
+  contacts          Contact[]
+  groups            Group[]
+  templates         Template[]
+
   customFields        CustomField[]
   customFieldRequests CustomFieldRequest[]
   emailEvents         EmailEvent[]
   activityLogs        ClientActivityLog[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  suppressionLists    SuppressionList[]
 }
 
 enum UserRole {
@@ -63,6 +80,11 @@ model User {
   customFieldRequests CustomFieldRequest[]
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
+  contacts            Contact[]
+  campaigns           Campaign[]
+  groups              Group[]
+  templates           Template[]
+  refreshTokens       RefreshToken[]
 }
 
 enum CampaignStatus {
@@ -75,6 +97,15 @@ enum CampaignStatus {
   STOPPED
 }
 
+enum RecurringFrequency {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
 model Campaign {
   id                String         @id @default(cuid())
   name              String
@@ -82,13 +113,32 @@ model Campaign {
   content           String
   status            CampaignStatus @default(DRAFT)
   isRecurring       Boolean        @default(false)
-  recurringSchedule String? // e.g., cron string
-  groups            Group[]
-  client            Client         @relation(fields: [clientId], references: [id])
-  clientId          String
-  emailEvents       EmailEvent[]
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  recurringSchedule String? // Generated cron string (computed from other fields)
+
+  // Enhanced recurring scheduling fields
+  recurringFrequency  RecurringFrequency @default(NONE)
+  recurringTime       String? // Time in HH:mm format (24-hour), defaults to 09:00 if not specified
+  recurringTimezone   String? // IANA timezone (e.g., "Asia/Kolkata")
+  recurringDaysOfWeek Int[] // 0-6 for Sunday-Saturday (for WEEKLY/BIWEEKLY)
+  recurringDayOfMonth Int? // 1-31 (for MONTHLY)
+  recurringStartDate  DateTime? // When recurring should start
+  recurringEndDate    DateTime? // Optional end date for recurring
+
+  groups      Group[]
+  client      Client             @relation(fields: [clientId], references: [id])
+  clientId    String
+  emailEvents EmailEvent[]
+  analytics   CampaignAnalytics?
+
+  // Mailgun-specific fields
+  mailgunMessageIds String? // JSON array of Mailgun message IDs
+  mailgunTags       String[] // Tags for tracking
+  sentAt            DateTime? // Timestamp when campaign was sent
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 model Contact {
@@ -98,15 +148,17 @@ model Contact {
   lastName          String?
   client            Client                    @relation(fields: [clientId], references: [id])
   clientId          String
+  createdById       String
   contactGroups     ContactGroup[]
   customFieldValues ContactCustomFieldValue[]
   createdAt         DateTime                  @default(now())
   updatedAt         DateTime                  @updatedAt
+  createdBy         User                      @relation(fields: [createdById], references: [id])
+  nameValueId       String?                   @unique
+  nameValue         ContactCustomFieldValue?  @relation("ContactNameIdentity", fields: [nameValueId], references: [id])
 
   @@unique([email, clientId])
 }
-
-
 
 model Group {
   id            String         @id @default(cuid())
@@ -117,6 +169,8 @@ model Group {
   contactGroups ContactGroup[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  createdById   String
+  createdBy     User           @relation(fields: [createdById], references: [id])
 }
 
 model ContactGroup {
@@ -130,24 +184,16 @@ model ContactGroup {
 }
 
 model Template {
-  id        String   @id @default(cuid())
-  name      String
-  content   String
-  client    Client   @relation(fields: [clientId], references: [id])
-  clientId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Employee {
-  id         String   @id @default(cuid())
-  name       String
-  email      String   @unique
-  isVerified Boolean  @default(false)
-  client     Client   @relation(fields: [clientId], references: [id])
-  clientId   String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  subject     String
+  content     String
+  client      Client   @relation(fields: [clientId], references: [id])
+  clientId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
 }
 
 model Plan {
@@ -188,6 +234,7 @@ model CustomField {
   helpText        String? // Helper text for users
   displayOrder    Int                       @default(0) // For UI ordering
   isActive        Boolean                   @default(true) // Soft delete support
+  isNameField     Boolean                   @default(false) // Marks this field as the source of the Contact's display name
   values          ContactCustomFieldValue[]
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
@@ -197,14 +244,15 @@ model CustomField {
 }
 
 model ContactCustomFieldValue {
-  id            String      @id @default(cuid())
-  contact       Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  contactId     String
-  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
-  customFieldId String
-  value         String // Stored as string, parsed based on field type
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id              String      @id @default(cuid())
+  contact         Contact     @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  contactId       String
+  customField     CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+  customFieldId   String
+  value           String // Stored as string, parsed based on field type
+  contactIdentity Contact?    @relation("ContactNameIdentity")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@unique([contactId, customFieldId])
   @@index([customFieldId])
@@ -238,6 +286,47 @@ model CustomFieldRequest {
   updatedAt       DateTime        @updatedAt
 
   @@index([clientId, status])
+}
+
+model CampaignAnalytics {
+  id                String   @id @default(cuid())
+  campaign          Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId        String   @unique
+  totalSent         Int      @default(0)
+  totalDelivered    Int      @default(0)
+  totalOpened       Int      @default(0)
+  totalClicked      Int      @default(0)
+  totalBounced      Int      @default(0)
+  totalUnsubscribed Int      @default(0)
+  totalComplaints   Int      @default(0)
+  uniqueOpens       Int      @default(0)
+  uniqueClicks      Int      @default(0)
+  openRate          Float    @default(0)
+  clickRate         Float    @default(0)
+  bounceRate        Float    @default(0)
+  lastUpdated       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  @@index([campaignId])
+}
+
+enum SuppressionType {
+  BOUNCE
+  UNSUBSCRIBE
+  COMPLAINT
+}
+
+model SuppressionList {
+  id        String          @id @default(cuid())
+  email     String
+  type      SuppressionType
+  reason    String?
+  client    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientId  String
+  createdAt DateTime        @default(now())
+
+  @@unique([email, type, clientId])
+  @@index([clientId, type])
 }
 
 enum EmailEventType {

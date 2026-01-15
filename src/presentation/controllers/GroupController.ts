@@ -14,7 +14,11 @@ export class GroupController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const group = await groupManagementUseCase.create(req.body, req.user.clientId);
+      if (!req.user?.id) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
+        return;
+      }
+      const group = await groupManagementUseCase.create(req.body, req.user.clientId, req.user.id);
       res.status(StatusCodes.CREATED).json(group);
     } catch (error) {
       console.error('Error creating group:', error);

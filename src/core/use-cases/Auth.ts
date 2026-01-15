@@ -2,11 +2,12 @@
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import { UserRepository } from '../../infrastructure/repositories/UserRepository';
+import { User } from '@prisma/client';
 
 export class Auth {
   constructor(private userRepository: UserRepository) { }
 
-  async login(email: string, password: string): Promise<string | null> {
+  async login(email: string, password: string): Promise<{ token: string; user: User } | null> {
     const user = await this.userRepository.findByEmail(email);
 
     if (!user || !user.password) {
@@ -30,7 +31,7 @@ export class Auth {
       { expiresIn: '24h' }
     );
 
-    return token;
+    return { token, user };
   }
 
   async register(email: string, password: string, clientId: string, role?: string): Promise<string | null> {

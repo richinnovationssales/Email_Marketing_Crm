@@ -1,6 +1,7 @@
 // src/index.ts
 import express from 'express';
 import morgan from 'morgan';
+import cors from 'cors';
 import routes from './presentation/routes';
 import { CampaignScheduler } from './infrastructure/services/CampaignScheduler';
 import { CampaignRepository } from './infrastructure/repositories/CampaignRepository';
@@ -20,6 +21,11 @@ const stream = {
 };
 
 app.use(morgan('tiny', { stream }));
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 app.use('/api', routes);
 
@@ -35,7 +41,7 @@ const campaignScheduler = new CampaignScheduler(sendCampaignUseCase, campaignRep
 campaignScheduler.start();
 
 const server = app.listen(port, () => {
-  Logger.info(`Server is running on port ${port}`);
+  Logger.info(`Server is running on port : ${port}`);
 });
 
 const gracefulShutdown = (signal: string) => {

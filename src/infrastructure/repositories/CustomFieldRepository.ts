@@ -1,3 +1,4 @@
+// src/infrastructure/repositories/CustomFieldRepository.ts
 import { CustomField, ContactCustomFieldValue, CustomFieldType } from '../../core/entities/CustomField';
 import prisma from '../../infrastructure/database/prisma';
 import { Prisma } from '@prisma/client';
@@ -8,6 +9,7 @@ export class CustomFieldRepository {
         return {
             ...created,
             type: created.type as CustomFieldType, 
+            isNameField: created.isNameField ?? false,
         };
     }
 
@@ -23,6 +25,7 @@ export class CustomFieldRepository {
         return results.map(field => ({
             ...field,
             type: field.type as CustomFieldType, 
+            isNameField: field.isNameField ?? false,
         }));
     }
 
@@ -32,6 +35,7 @@ export class CustomFieldRepository {
         return {
             ...result,
             type: result.type as CustomFieldType, 
+            isNameField: result.isNameField ?? false,
         } as CustomField;
     }
 
@@ -43,6 +47,7 @@ export class CustomFieldRepository {
         return {
             ...result,
             type: result.type as CustomFieldType, 
+            isNameField: result.isNameField ?? false,
         } as CustomField;
     }
 
@@ -50,7 +55,8 @@ export class CustomFieldRepository {
         const updated = await prisma.customField.update({ where: { id }, data });
         return {
             ...updated,
-            type: updated.type as CustomFieldType, 
+            type: updated.type as CustomFieldType,
+             isNameField: updated.isNameField ?? false, 
         };
     }
 
@@ -62,6 +68,7 @@ export class CustomFieldRepository {
         return {
             ...updated,
             type: updated.type as CustomFieldType, // Cast or map to your domain enum
+            isNameField: updated.isNameField ?? false,
         };
     }
 
@@ -69,7 +76,8 @@ export class CustomFieldRepository {
         const deleted = await prisma.customField.delete({ where: { id } });
         return {
             ...deleted,
-            type: deleted.type as CustomFieldType, 
+            type: deleted.type as CustomFieldType,
+            isNameField: deleted.isNameField ?? false, 
         };
     }
 

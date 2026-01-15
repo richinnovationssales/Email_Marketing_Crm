@@ -2,16 +2,72 @@ import { Group } from '../../core/entities/Group';
 import prisma from '../../infrastructure/database/prisma';
 
 export class GroupRepository {
-  async create(data: Group, clientId: string): Promise<Group> {
-    return await prisma.group.create({ data: { ...data, clientId } });
+  async create(data: Group, clientId: string, userId: string): Promise<Group> {
+    return await prisma.group.create({
+      data: {
+        ...data,
+        clientId,
+        createdById: userId
+      },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
   }
 
   async findAll(clientId: string): Promise<Group[]> {
-    return await prisma.group.findMany({ where: { clientId } });
+    return await prisma.group.findMany({
+      where: { clientId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        }
+      }
+    });
   }
 
-  async findById(id: string, clientId: string): Promise<Group | null> {
-    return await prisma.group.findFirst({ where: { id, clientId } });
+  async findById(id: string, clientId: string): Promise<any> {
+    return await prisma.group.findFirst({
+      where: { id, clientId },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        },
+        contactGroups: {
+          include: {
+            contact: {
+              include: {
+                customFieldValues: {
+                  include: {
+                    customField: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
   }
 
   async update(id: string, data: Partial<Group>, clientId: string): Promise<Group | null> {

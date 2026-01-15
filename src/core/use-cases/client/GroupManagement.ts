@@ -4,8 +4,8 @@ import { Group } from '../../entities/Group';
 export class GroupManagement {
   constructor(private groupRepository: GroupRepository) { }
 
-  async create(data: Group, clientId: string): Promise<Group> {
-    return this.groupRepository.create(data, clientId);
+  async create(data: Group, clientId: string, userId: string): Promise<Group> {
+    return this.groupRepository.create(data, clientId, userId);
   }
 
   async findAll(clientId: string): Promise<Group[]> {

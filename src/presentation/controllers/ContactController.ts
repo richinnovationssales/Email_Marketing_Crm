@@ -16,7 +16,12 @@ export class ContactController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const contact = await contactManagementUseCase.create(req.body, req.user.clientId);
+      if (!req.user?.id) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
+        return;
+      }
+      const { groupId, ...contactData } = req.body;
+      const contact = await contactManagementUseCase.create(contactData, req.user.clientId, req.user.id, groupId);
       res.status(StatusCodes.CREATED).json(contact);
     } catch (error) {
       console.error('Error creating contact:', error);
@@ -30,8 +35,12 @@ export class ContactController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
-      const contacts = await contactManagementUseCase.findAll(req.user.clientId);
-      res.json(contacts);
+
+      const cursor = req.query.cursor as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+      const result = await contactManagementUseCase.findAll(req.user.clientId, cursor, limit);
+      res.json(result);
     } catch (error) {
       console.error('Error fetching contacts:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
@@ -49,7 +58,29 @@ export class ContactController {
         res.status(StatusCodes.NOT_FOUND).json({ message: 'Contact not found' });
         return;
       }
-      res.json(contact);
+
+      // Transform customFieldValues to normalized structure
+      const customFields: Record<string, any> = {};
+      if ((contact as any).customFieldValues) {
+        (contact as any).customFieldValues.forEach((cfv: any) => {
+          customFields[cfv.customFieldId] = {
+            id: cfv.id,
+            value: cfv.value,
+            customFieldId: cfv.customFieldId,
+            fieldKey: cfv.customField?.fieldKey,
+            name: cfv.customField?.name,
+            type: cfv.customField?.type,
+            isRequired: cfv.customField?.isRequired,
+            options: cfv.customField?.options,
+            helpText: cfv.customField?.helpText
+          };
+        });
+      }
+
+      // Remove raw customFieldValues and add normalized customFields
+      const { customFieldValues, ...contactData } = contact as any;
+
+      res.json({ ...contactData, customFields });
     } catch (error) {
       console.error('Error fetching contact:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
@@ -92,18 +123,52 @@ export class ContactController {
     }
   }
 
+  async bulkDeleteContacts(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+
+      const { ids } = req.body;
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Invalid or empty "ids" array provided.' });
+        return;
+      }
+
+      const deletedCount = await contactManagementUseCase.deleteMany(ids, req.user.clientId);
+      res.status(StatusCodes.OK).json({
+        message: `${deletedCount} contacts deleted successfully.`,
+        deletedCount
+      });
+    } catch (error) {
+      console.error('Error deleting contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
   async bulkUpload(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user?.clientId) {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;
       }
+      if (!req.user?.id) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
+        return;
+      }
       if (!req.file) {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'File is missing' });
         return;
       }
-      await bulkContactUploadUseCase.execute(req.file.path, req.user.clientId);
-      res.status(StatusCodes.OK).json({ message: 'Contacts uploaded successfully' });
+
+      const groupId = req.body.groupId; // Extract groupId from form data
+      const result = await bulkContactUploadUseCase.execute(req.file.path, req.user.clientId, req.user.id, groupId);
+      res.status(StatusCodes.OK).json({
+        success: result.success,
+        failed: result.failed,
+        message: `Bulk upload completed – ${result.success} contacts created, ${result.failed} rows skipped due to validation errors.`
+      });
     } catch (error) {
       console.error('Error uploading contacts:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });

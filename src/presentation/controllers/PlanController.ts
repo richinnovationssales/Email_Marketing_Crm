@@ -20,7 +20,7 @@ export class PlanController {
   async getPlans(req: Request, res: Response): Promise<void> {
     try {
       const plans = await planManagementUseCase.findAll();
-      res.json(plans);
+      res.json({ data: plans });
     } catch (error) {
       console.error('Error fetching plans:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
@@ -57,7 +57,18 @@ export class PlanController {
 
   async deletePlan(req: Request, res: Response): Promise<void> {
     try {
-      const plan = await planManagementUseCase.delete(req.params.id);
+      const { id } = req.params;
+
+      const clientCount = await planRepository.countClientsByPlanId(id);
+      if (clientCount > 0) {
+        res.status(StatusCodes.BAD_REQUEST).json({
+          message: `Cannot delete plan. ${clientCount} client(s) are currently using this plan.`,
+          clientCount
+        });
+        return;
+      }
+
+      const plan = await planManagementUseCase.delete(id);
       if (!plan) {
         res.status(StatusCodes.NOT_FOUND).json({ message: 'Plan not found' });
         return;
@@ -65,6 +76,25 @@ export class PlanController {
       res.status(StatusCodes.NO_CONTENT).send();
     } catch (error) {
       console.error('Error deleting plan:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
+  async getClientsByPlan(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      // First check if plan exists
+      const plan = await planManagementUseCase.findById(id);
+      if (!plan) {
+        res.status(StatusCodes.NOT_FOUND).json({ message: 'Plan not found' });
+        return;
+      }
+
+      const clients = await planRepository.findClientsByPlanId(id);
+      res.json(clients);
+    } catch (error) {
+      console.error('Error fetching clients by plan:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }

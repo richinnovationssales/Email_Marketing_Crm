@@ -1,18 +1,30 @@
 import { Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { ClientManagement } from '../../../core/use-cases/admin/ClientManagement';
+import { ClientRegistrationUseCase } from '../../../core/use-cases/admin/ClientRegistrationUseCase';
 import { ClientRepository } from '../../../infrastructure/repositories/ClientRepository';
+import { UserRepository } from '../../../infrastructure/repositories/UserRepository';
+import { CustomFieldRepository } from '../../../infrastructure/repositories/CustomFieldRepository';
+import { PlanRepository } from '../../../infrastructure/repositories/PlanRepository';
 import { AuthRequest } from '../../middlewares/authMiddleware';
 
 const clientRepository = new ClientRepository();
-const clientManagement = new ClientManagement(clientRepository);
+const userRepository = new UserRepository();
+const customFieldRepository = new CustomFieldRepository();
+const planRepository = new PlanRepository();
+const clientManagement = new ClientManagement(clientRepository, planRepository);
+const clientRegistration = new ClientRegistrationUseCase(
+    clientRepository,
+    userRepository,
+    customFieldRepository
+);
 
 export class ClientController {
     // Get all clients
     async getClients(req: AuthRequest, res: Response): Promise<void> {
         try {
             const clients = await clientManagement.findAll();
-            res.json(clients);
+            res.json({ data: clients });
         } catch (error) {
             console.error('Error fetching clients:', error);
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
@@ -22,28 +34,35 @@ export class ClientController {
     // Get client by ID
     async getClientById(req: AuthRequest, res: Response): Promise<void> {
         try {
-            const client = await clientManagement.findById(req.params.id);
+            const client = await clientManagement.findByIdWithDetails(req.params.id);
             if (!client) {
                 res.status(StatusCodes.NOT_FOUND).json({ message: 'Client not found' });
                 return;
             }
-            res.json(client);
+            res.json({ data: client });
         } catch (error) {
             console.error('Error fetching client:', error);
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }
 
-    // Create new client
     async createClient(req: AuthRequest, res: Response): Promise<void> {
         try {
-            const client = await clientManagement.create(req.body);
+            const client = await clientRegistration.execute(req.body);
             res.status(StatusCodes.CREATED).json(client);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error creating client:', error);
+
+            if (error.message === 'Client with this name already exists' ||
+                error.message === 'User with this email already exists') {
+                res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
+                return;
+            }
+
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }
+
 
     // Update client
     async updateClient(req: AuthRequest, res: Response): Promise<void> {
@@ -163,20 +182,20 @@ export class ClientController {
     }
 
     // Onboard first client
-   async onboardClient(req: AuthRequest, res: Response): Promise<void> {
-    try {
-        if (!req.body.planId) {
-            res.status(400).json({ message: "planId is required" });
-            return;
+    async onboardClient(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.body.planId) {
+                res.status(400).json({ message: "planId is required" });
+                return;
+            }
+
+            const client = await clientManagement.create(req.body);
+            res.status(StatusCodes.CREATED).json(client);
+
+        } catch (error) {
+            console.error('Error onboarding client:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
-
-        const client = await clientManagement.create(req.body);
-        res.status(StatusCodes.CREATED).json(client);
-
-    } catch (error) {
-        console.error('Error onboarding client:', error);
-        res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
-}
 
 }

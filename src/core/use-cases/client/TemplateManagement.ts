@@ -4,8 +4,8 @@ import { Template } from '../../entities/Template';
 export class TemplateManagement {
   constructor(private templateRepository: TemplateRepository) { }
 
-  async create(data: Template, clientId: string): Promise<Template> {
-    return this.templateRepository.create(data, clientId);
+  async create(data: Template, clientId: string, userId: string): Promise<Template> {
+    return this.templateRepository.create(data, clientId, userId);
   }
 
   async findAll(clientId: string): Promise<Template[]> {

@@ -13,17 +13,37 @@ export class DashboardRepository {
   }
 
   async getClientDashboard(clientId: string) {
-    const userCount = await prisma.user.count({ where: { clientId } });
-    const campaignCount = await prisma.campaign.count({ where: { clientId } });
-    const contactCount = await prisma.contact.count({ where: { clientId } });
-    const groupCount = await prisma.group.count({ where: { clientId } });
-    const templateCount = await prisma.template.count({ where: { clientId } });
+    const users = (await prisma.user.findMany({
+      where: { clientId }, omit: {
+        password: true,
+      }
+    })).filter((user) => user.role !== 'CLIENT_SUPER_ADMIN');
+    const campaigns = await prisma.campaign.findMany({
+      where: { clientId }, include: {
+        emailEvents: true,
+        groups: true,
+
+      }
+    });
+    const contacts = await prisma.contact.findMany({
+      where: { clientId }, include: {
+        contactGroups: true,
+        customFieldValues: true
+      }
+    });
+    const groups = await prisma.group.findMany({
+      where: { clientId }, include: {
+        campaigns: true,
+        contactGroups: true
+      }
+    });
+    const templates = await prisma.template.findMany({ where: { clientId } });
     return {
-      userCount,
-      campaignCount,
-      contactCount,
-      groupCount,
-      templateCount,
+      users,
+      campaigns,
+      contacts,
+      groups,
+      templates,
     };
   }
 
