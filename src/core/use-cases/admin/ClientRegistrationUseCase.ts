@@ -12,6 +12,7 @@ export interface ClientRegistrationData {
     planId: string;
     adminEmail: string;
     adminPassword: string;
+    registrationEmail?: string; // Default sender email (falls back to adminEmail)
     customFields?: CustomFieldDefinition[];
 }
 
@@ -49,8 +50,10 @@ export class ClientRegistrationUseCase {
                 data: {
                     name: data.name,
                     planId: data.planId,
+                    registrationEmail: data.registrationEmail || data.adminEmail, // Default to adminEmail
                     isApproved: true,
-                    isActive: true
+                    isActive: true,
+                    remainingMessages: plan.emailLimit // Initialize with plan limit
                 },
                 include: { plan: true }
             });

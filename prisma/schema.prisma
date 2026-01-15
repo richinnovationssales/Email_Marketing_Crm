@@ -38,20 +38,29 @@ model RefreshToken {
 }
 
 model Client {
-  id                String     @id @default(cuid())
+  id                String    @id @default(cuid())
   name              String
-  isApproved        Boolean    @default(false)
-  isActive          Boolean    @default(true)
-  plan              Plan       @relation(fields: [planId], references: [id])
+  registrationEmail String? // Email from onboarding - used as default sender
+  isApproved        Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  plan              Plan      @relation(fields: [planId], references: [id])
   planId            String
   planStartDate     DateTime?
   planRenewalDate   DateTime?
   remainingMessages Int?
-  users             User[]
-  campaigns         Campaign[]
-  contacts          Contact[]
-  groups            Group[]
-  templates         Template[]
+
+  // Mailgun Domain Configuration (CLIENT_SUPER_ADMIN configurable)
+  mailgunDomain     String? // Client's verified Mailgun domain
+  mailgunFromEmail  String? // Override sender email (defaults to registrationEmail)
+  mailgunFromName   String? // Sender display name (defaults to registrationEmail if not set)
+  mailgunVerified   Boolean   @default(false)
+  mailgunVerifiedAt DateTime?
+
+  users     User[]
+  campaigns Campaign[]
+  contacts  Contact[]
+  groups    Group[]
+  templates Template[]
 
   customFields        CustomField[]
   customFieldRequests CustomFieldRequest[]
@@ -375,6 +384,9 @@ enum ActivityType {
   CAMPAIGN_SENT
   USER_CREATED
   USER_DELETED
+  MAILGUN_DOMAIN_CONFIGURED
+  MAILGUN_DOMAIN_UPDATED
+  MAILGUN_DOMAIN_REMOVED
 }
 
 model ClientActivityLog {

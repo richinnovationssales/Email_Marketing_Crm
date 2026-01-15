@@ -26,6 +26,17 @@ export interface SingleEmailParams {
   text?: string;
   tags?: string[];
   from?: string;
+  clientConfig?: ClientMailgunConfig;
+}
+
+/**
+ * Client-specific Mailgun configuration for sending emails
+ * Allows each client to use their own domain and sender identity
+ */
+export interface ClientMailgunConfig {
+  domain?: string;        // Client's custom Mailgun domain (falls back to default)
+  fromEmail: string;      // Required: client's registrationEmail or override
+  fromName?: string;      // Display name (defaults to fromEmail if not set)
 }
 
 export interface BulkEmailParams {
@@ -35,7 +46,7 @@ export interface BulkEmailParams {
   text?: string;
   tags?: string[];
   recipientVariables?: Record<string, any>;
-  from?: string;
+  clientConfig?: ClientMailgunConfig;  // Client-specific Mailgun configuration
 }
 
 export interface CampaignSendResult {
@@ -112,27 +123,47 @@ export class MailgunService {
   /**
    * Send bulk emails to multiple recipients
    * Automatically batches requests if recipients exceed 1000 (Mailgun limit)
+   * PRIVACY FIX: Always uses recipient-variables to hide other recipients
    */
   async sendBulkEmail(params: BulkEmailParams): Promise<CampaignSendResult[]> {
     const BATCH_SIZE = 1000; // Mailgun's limit per request
     const results: CampaignSendResult[] = [];
     
+    // Use client config if provided, otherwise fallback to defaults
+    const domain = params.clientConfig?.domain || this.domain;
+    const fromEmail = params.clientConfig?.fromEmail || this.fromEmail;
+    const fromName = params.clientConfig?.fromName || fromEmail; // Use email as name fallback
+    
     // Split recipients into batches
     const batches = this.chunkArray(params.recipients, BATCH_SIZE);
     
     console.log(`Sending bulk email to ${params.recipients.length} recipients in ${batches.length} batch(es)`);
+    console.log(`Using domain: ${domain}, from: ${fromName} <${fromEmail}>`);
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       console.log(`Processing batch ${i + 1}/${batches.length} (${batch.length} recipients)`);
 
       try {
+        // PRIVACY FIX: Always generate recipient-variables to hide other recipients
+        // This ensures each recipient only sees their own email in "To" field
+        const recipientVars = params.recipientVariables 
+          ? { ...params.recipientVariables }
+          : {};
+        
+        for (const email of batch) {
+          if (!recipientVars[email]) {
+            recipientVars[email] = { email };
+          }
+        }
+
         const messageData: MailgunMessageData = {
-          from: params.from || `${this.fromName} <${this.fromEmail}>`,
+          from: `${fromName} <${fromEmail}>`,
           to: batch,
           subject: params.subject,
           html: params.html,
           text: params.text,
+          'recipient-variables': JSON.stringify(recipientVars),
         };
 
         // Add tags if provided
@@ -140,12 +171,8 @@ export class MailgunService {
           messageData['o:tag'] = params.tags;
         }
 
-        // Add recipient variables if provided
-        if (params.recipientVariables) {
-          messageData['recipient-variables'] = JSON.stringify(params.recipientVariables);
-        }
-
-        const result = await this.mg.messages.create(this.domain, messageData as any);
+        // Use client domain if provided, otherwise use default
+        const result = await this.mg.messages.create(domain, messageData as any);
         
         results.push({
           messageId: result.id || '',
@@ -177,7 +204,7 @@ export class MailgunService {
   }
 
   /**
-   * Send campaign with advanced tracking and tagging
+   * Send campaign with advanced tracking, tagging, and client-specific configuration
    */
   async sendCampaign(
     campaignId: string,
@@ -185,6 +212,8 @@ export class MailgunService {
     recipients: string[],
     subject: string,
     html: string,
+    recipientVariables?: Record<string, any>,
+    clientConfig?: ClientMailgunConfig,
     text?: string
   ): Promise<CampaignSendResult[]> {
     const tags = [
@@ -198,6 +227,8 @@ export class MailgunService {
       html,
       text,
       tags,
+      recipientVariables,
+      clientConfig,
     });
   }
 

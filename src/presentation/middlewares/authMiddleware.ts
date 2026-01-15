@@ -62,3 +62,15 @@ export const checkClientRole = (roles: UserRole[]) => {
   };
 };
 
+/**
+ * Middleware to require CLIENT_SUPER_ADMIN role
+ * Used for sensitive operations like domain configuration
+ */
+export const requireClientSuperAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (req.user?.role !== UserRole.CLIENT_SUPER_ADMIN) {
+    return res.status(StatusCodes.FORBIDDEN).send({ 
+      message: 'Forbidden: CLIENT_SUPER_ADMIN role required for this operation' 
+    });
+  }
+  next();
+};

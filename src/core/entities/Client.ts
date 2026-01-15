@@ -7,6 +7,7 @@ import { CustomField } from './CustomField';
 export interface Client {
     id: string;
     name: string;
+    registrationEmail?: string | null; // Email from onboarding - used as default sender
     isApproved: boolean;
     isActive: boolean;
     plan: Plan;
@@ -14,6 +15,14 @@ export interface Client {
     planStartDate?: Date | null;
     planRenewalDate?: Date | null;
     remainingMessages?: number | null;
+
+    // Mailgun Domain Configuration (CLIENT_SUPER_ADMIN configurable)
+    mailgunDomain?: string | null;
+    mailgunFromEmail?: string | null;
+    mailgunFromName?: string | null;
+    mailgunVerified?: boolean;
+    mailgunVerifiedAt?: Date | null;
+
     createdAt: Date;
     updatedAt: Date;
 }

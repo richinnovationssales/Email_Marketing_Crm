@@ -1,7 +1,8 @@
 import { CampaignRepository } from '../../../infrastructure/repositories/CampaignRepository';
 import { ContactGroupRepository } from '../../../infrastructure/repositories/ContactGroupRepository';
+import { ClientRepository } from '../../../infrastructure/repositories/ClientRepository';
 import { EmailService } from '../../../infrastructure/services/EmailService';
-import { MailgunService } from '../../../infrastructure/services/MailgunService';
+import { MailgunService, ClientMailgunConfig } from '../../../infrastructure/services/MailgunService';
 import { SuppressionListService } from '../../../infrastructure/services/SuppressionListService';
 import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
 import { CampaignStatus } from '@prisma/client';
@@ -9,6 +10,7 @@ import { CampaignStatus } from '@prisma/client';
 export class SendCampaign {
   private suppressionListService: SuppressionListService;
   private emailEventRepository: EmailEventRepository;
+  private clientRepository: ClientRepository;
 
   constructor(
     private campaignRepository: CampaignRepository,
@@ -18,6 +20,7 @@ export class SendCampaign {
   ) {
     this.suppressionListService = new SuppressionListService();
     this.emailEventRepository = new EmailEventRepository();
+    this.clientRepository = new ClientRepository();
   }
 
   async execute(campaignId: string, clientId: string): Promise<void> {
@@ -50,6 +53,15 @@ export class SendCampaign {
       throw new Error('No valid recipients after filtering suppressed emails');
     }
 
+    // Checking email limits before sending
+    const client = await this.clientRepository.findById(clientId);
+    if (!client) throw new Error('Client not found');
+
+    const remainingMessages = client.remainingMessages || 0;
+    if (remainingMessages < recipientEmails.length) {
+      throw new Error(`Insufficient email credits. Required: ${recipientEmails.length}, Available: ${remainingMessages}`);
+    }
+
     // Update status to SENDING
     await this.campaignRepository.update(campaignId, { status: CampaignStatus.SENDING }, clientId);
 
@@ -60,13 +72,35 @@ export class SendCampaign {
       if (useMailgun) {
         console.log('Using Mailgun to send campaign');
         
-        // Send via Mailgun with campaign tagging
+        // Client fetched earlier for validation
+        
+        // Build recipient variables for personalization and privacy
+        // This ensures each recipient only sees their own email in "To" field
+        const recipientVariables: Record<string, any> = {};
+        for (const contact of uniqueContacts.filter(c => recipientEmails.includes(c.email))) {
+          recipientVariables[contact.email] = {
+            name: contact.firstName || contact.email.split('@')[0],
+            firstName: contact.firstName || '',
+            lastName: contact.lastName || '',
+          };
+        }
+        
+        // Build client Mailgun config - uses registrationEmail as fallback
+        const clientConfig: ClientMailgunConfig | undefined = client ? {
+          domain: client.mailgunDomain || undefined,
+          fromEmail: client.mailgunFromEmail || client.registrationEmail || process.env.MAILGUN_FROM_EMAIL!,
+          fromName: client.mailgunFromName || client.mailgunFromEmail || client.registrationEmail || undefined,
+        } : undefined;
+        
+        // Send via Mailgun with campaign tagging and client config
         const results = await this.mailgunService!.sendCampaign(
           campaignId,
           clientId,
           recipientEmails,
           campaign.subject,
-          campaign.content
+          campaign.content,
+          recipientVariables,
+          clientConfig
         );
 
         // Collect all message IDs from batch results
@@ -105,6 +139,12 @@ export class SendCampaign {
           clientId
         );
 
+        // Deduct credits based on successful sends
+        const totalSent = results.reduce((sum, res) => sum + res.recipientsSent, 0);
+        if (totalSent > 0) {
+          await this.clientRepository.update(clientId, { remainingMessages: { decrement: totalSent } });
+        }
+
         console.log(`Campaign sent successfully via Mailgun. Message IDs: ${messageIds.join(', ')}`);
       } else {
         console.log('Using fallback EmailService (Nodemailer)');
@@ -130,6 +170,9 @@ export class SendCampaign {
           },
           clientId
         );
+
+        // Deduct credits for Nodemailer sends
+        await this.clientRepository.update(clientId, { remainingMessages: { decrement: recipientEmails.length } });
 
         console.log(`Campaign sent successfully via Nodemailer`);
       }
