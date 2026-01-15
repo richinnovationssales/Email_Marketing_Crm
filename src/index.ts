@@ -35,7 +35,25 @@ app.use(errorHandler);
 const campaignRepository = new CampaignRepository();
 const contactGroupRepository = new ContactGroupRepository();
 const emailService = new EmailService();
-const sendCampaignUseCase = new SendCampaign(campaignRepository, contactGroupRepository, emailService);
+
+// Initialize MailgunService if enabled
+import { MailgunService } from './infrastructure/services/MailgunService';
+let mailgunService: MailgunService | undefined;
+try {
+  if (process.env.USE_MAILGUN === 'true') {
+    mailgunService = new MailgunService();
+    Logger.info('MailgunService initialized for scheduler');
+  }
+} catch (error) {
+  Logger.warn('Failed to initialize MailgunService for scheduler:', error);
+}
+
+const sendCampaignUseCase = new SendCampaign(
+  campaignRepository, 
+  contactGroupRepository, 
+  emailService,
+  mailgunService
+);
 const campaignScheduler = new CampaignScheduler(sendCampaignUseCase, campaignRepository);
 
 campaignScheduler.start();
