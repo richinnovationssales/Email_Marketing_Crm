@@ -17,6 +17,17 @@ import clientDomainRoutes from './clientDomainRoutes';
 
 const router = Router();
 
+//health check route
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'user-service',
+    uptime: process.uptime(), // seconds
+    timestamp: new Date().toISOString()
+  });
+});
+
+
 // Public routes (no auth required)
 router.use('/webhooks', webhookRoutes);
 
