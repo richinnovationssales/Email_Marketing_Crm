@@ -8,6 +8,7 @@ export interface Admin {
     email: string;
     password?: string;
     role: AdminRole;
+    isActive: boolean;
     createdAt: Date;
     updatedAt: Date;
 }
