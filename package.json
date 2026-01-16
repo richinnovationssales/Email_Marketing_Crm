@@ -5,7 +5,7 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "build": "tsc",
-    "start:prod": "node dist/index.js",
+    "start:prod": "tsc && node dist/index.js",
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
     "create:superadmin": "ts-node scripts/createSuperAdmin.ts"
   },
