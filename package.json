@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node src/index.ts",
-    "build": "tsc",
-    "start:prod": "tsc && node dist/index.js",
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
+    "build": "tsc",
+    "migrate": "prisma migrate deploy",
+    "generate": "prisma generate",
+    "start:prod": "npm run generate && npm run migrate && node dist/index.js",
     "create:superadmin": "ts-node scripts/createSuperAdmin.ts"
   },
   "keywords": [],
