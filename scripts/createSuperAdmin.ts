@@ -5,7 +5,7 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = 'superadmin@example.com';
+  const email = 'joshjoychan@smartsolutionsme.com';
   const password = 'Root@123'; // Change this!
 
   // Check if any SUPER_ADMIN already exists
