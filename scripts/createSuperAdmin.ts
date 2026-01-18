@@ -8,19 +8,27 @@ async function main() {
   const email = 'superadmin@example.com';
   const password = 'Root@123'; // Change this!
 
+  // Check if any SUPER_ADMIN already exists
+  const existingSuperAdmin = await prisma.admin.findFirst({
+    where: { role: 'SUPER_ADMIN' },
+  });
+
+  if (existingSuperAdmin) {
+    console.log('Super Admin already exists:', existingSuperAdmin.email);
+    return;
+  }
+
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  await prisma.admin.upsert({
-    where: { email },
-    update: { password: hashedPassword, role: 'SUPER_ADMIN' },
-    create: {
+  await prisma.admin.create({
+    data: {
       email,
       password: hashedPassword,
       role: 'SUPER_ADMIN',
     },
   });
 
-  console.log('Super Admin created/updated:', email);
+  console.log('Super Admin created:', email);
 }
 
 main()
