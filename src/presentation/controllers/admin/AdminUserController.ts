@@ -91,6 +91,29 @@ async onboardClient(req: AuthRequest, res: Response): Promise<void> {
   }
 }
 
+async activateToggleAdmin(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const adminId = req.params.id;
+
+    const admin = await adminRepository.findById(adminId);
+    if (!admin) {
+      res.status(StatusCodes.NOT_FOUND).json({ message: "Admin not found" });
+      return;
+    }
+
+    const updatedAdmin = await adminRepository.update(adminId, {
+      isActive: !admin.isActive,
+    });
+
+    res.json(updatedAdmin);
+  } catch (error) {
+    console.error("Error toggling admin status:", error);
+    res
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ message: "Internal server error" });
+  }
+}
+
 
 
 }

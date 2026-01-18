@@ -4,6 +4,7 @@ import { StatusCodes } from 'http-status-codes';
 import { ZodError } from 'zod';
 import { CampaignManagement } from '../../core/use-cases/client/CampaignManagement';
 import { CampaignRepository } from '../../infrastructure/repositories/CampaignRepository';
+import { CampaignStatus, UserRole } from '@prisma/client';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import { CampaignApproval } from '../../core/use-cases/client/CampaignApproval';
 import { SendCampaign } from '../../core/use-cases/client/SendCampaign';
@@ -46,15 +47,31 @@ export class CampaignController {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'User ID is missing' });
         return;
       }
-      const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId, req.user.id);
-      console.log('Campaign created', campaign.id);
-      // Handle Send Immediately
-      if ( !campaign.isRecurring) {
-        try {
-          // Auto-approve first
+      
+      // Determine initial status based on role
+      // CLIENT_ADMIN and CLIENT_SUPER_ADMIN get auto-approval
+      let initialStatus: CampaignStatus | undefined;
+      if (req.user.role === UserRole.CLIENT_ADMIN || 
+          req.user.role === UserRole.CLIENT_SUPER_ADMIN || 
+          req.user.role === UserRole.SUPER_ADMIN) {
+        initialStatus = CampaignStatus.APPROVED;
+      }
 
-          console.log('Auto-approving campaign', campaign.id);
-          await campaignApprovalUseCase.approve(campaign.id, req.user.clientId);
+      const campaign = await campaignManagementUseCase.create(req.body, req.user.clientId, req.user.id, initialStatus);
+      console.log('Campaign created', campaign.id);
+      
+      // Handle Send Immediately
+      // Check if sendImmediately is explicitly false in request body (defaults to true)
+      // Also check if campaign is NOT recurring (recurring campaigns are handled by scheduler)
+      const shouldSendImmediately = req.body.sendImmediately !== false;
+      
+      if (!campaign.isRecurring && shouldSendImmediately) {
+        try {
+          // If already approved (by admin role), skip approval step
+          if (campaign.status !== CampaignStatus.APPROVED) {
+             console.log('Auto-approving campaign', campaign.id);
+             await campaignApprovalUseCase.approve(campaign.id, req.user.clientId);
+          }
           
           // Then send
           console.log('Sending campaign', campaign.id);

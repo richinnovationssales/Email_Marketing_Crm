@@ -95,6 +95,7 @@ export class AuthController {
   // Admin login (unified for both SUPER_ADMIN and ADMIN)
   async adminLogin(req: Request, res: Response): Promise<void> {
     try {
+      
       const { email, password, isSuperAdmin = false } = req.body;
       
       // Verify admin credentials

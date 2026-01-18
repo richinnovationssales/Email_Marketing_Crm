@@ -9,6 +9,7 @@ import {
   UpdateRecurringScheduleInput
 } from '../../../presentation/validators/campaignValidators';
 import { ZodError } from 'zod';
+import { CampaignStatus } from '@prisma/client';
 
 export class CampaignManagement {
   constructor(private campaignRepository: CampaignRepository) { }
@@ -17,9 +18,9 @@ export class CampaignManagement {
    * Create a new campaign with validation
    * @throws ZodError if validation fails
    */
-  async create(data: unknown, clientId: string, userId: string): Promise<Campaign> {
+  async create(data: unknown, clientId: string, userId: string, initialStatus?: CampaignStatus): Promise<Campaign> {
     const validatedData = createCampaignSchema.parse(data);
-    return this.campaignRepository.create(validatedData, clientId, userId);
+    return this.campaignRepository.create(validatedData, clientId, userId, initialStatus);
   }
 
   async findAll(clientId: string): Promise<Campaign[]> {

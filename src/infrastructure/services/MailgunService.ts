@@ -26,6 +26,17 @@ export interface SingleEmailParams {
   text?: string;
   tags?: string[];
   from?: string;
+  clientConfig?: ClientMailgunConfig;
+}
+
+/**
+ * Client-specific Mailgun configuration for sending emails
+ * Allows each client to use their own domain and sender identity
+ */
+export interface ClientMailgunConfig {
+  domain?: string;        // Client's custom Mailgun domain (falls back to default)
+  fromEmail: string;      // Required: client's registrationEmail or override
+  fromName?: string;      // Display name (defaults to fromEmail if not set)
 }
 
 export interface BulkEmailParams {
@@ -35,7 +46,7 @@ export interface BulkEmailParams {
   text?: string;
   tags?: string[];
   recipientVariables?: Record<string, any>;
-  from?: string;
+  clientConfig?: ClientMailgunConfig;  // Client-specific Mailgun configuration
 }
 
 export interface CampaignSendResult {
@@ -112,53 +123,118 @@ export class MailgunService {
   /**
    * Send bulk emails to multiple recipients
    * Automatically batches requests if recipients exceed 1000 (Mailgun limit)
+   * PRIVACY FIX: Always uses recipient-variables to hide other recipients
    */
   async sendBulkEmail(params: BulkEmailParams): Promise<CampaignSendResult[]> {
     const BATCH_SIZE = 1000; // Mailgun's limit per request
     const results: CampaignSendResult[] = [];
     
+    // Initial Configuration - determine starting domain and sender identity
+    // If client config is provided and has values, use them, otherwise default to system env
+    let activeDomain = params.clientConfig?.domain || this.domain;
+    let activeFromEmail = params.clientConfig?.fromEmail || this.fromEmail;
+    let activeFromName = params.clientConfig?.fromName || activeFromEmail; 
+
+    // Helper to check if we are currently using system defaults
+    const isUsingSystemDefault = () => activeDomain === this.domain;
+    
     // Split recipients into batches
     const batches = this.chunkArray(params.recipients, BATCH_SIZE);
     
     console.log(`Sending bulk email to ${params.recipients.length} recipients in ${batches.length} batch(es)`);
+    console.log(`Initial configuration - Domain: ${activeDomain}, From: ${activeFromName} <${activeFromEmail}>`);
 
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
       console.log(`Processing batch ${i + 1}/${batches.length} (${batch.length} recipients)`);
 
+      // Prepare recipient variables for this batch
+      const recipientVars = params.recipientVariables 
+        ? { ...params.recipientVariables }
+        : {};
+      
+      for (const email of batch) {
+        if (!recipientVars[email]) {
+          recipientVars[email] = { email };
+        }
+      }
+
+      // Add tags if provided
+      const messageData: MailgunMessageData = {
+        from: `${activeFromName} <${activeFromEmail}>`,
+        to: batch,
+        subject: params.subject,
+        html: params.html,
+        text: params.text,
+        'recipient-variables': JSON.stringify(recipientVars),
+      };
+
+      if (params.tags && params.tags.length > 0) {
+        messageData['o:tag'] = params.tags;
+      }
+
+      // Send function that can be retried
+      const sendBatch = async (domain: string, from: string, name: string): Promise<any> => {
+        return this.mg.messages.create(domain, {
+          ...messageData,
+          from: `${name} <${from}>`
+        } as any);
+      };
+
       try {
-        const messageData: MailgunMessageData = {
-          from: params.from || `${this.fromName} <${this.fromEmail}>`,
-          to: batch,
-          subject: params.subject,
-          html: params.html,
-          text: params.text,
-        };
+        let result;
+        try {
+          // Attempt 1: Send with current active configuration
+          result = await sendBatch(activeDomain, activeFromEmail, activeFromName);
+        } catch (error: any) {
+          // Check for 401 Unauthorized AND if we are using a custom config that is different from system default
+          if (error.status === 401 && !isUsingSystemDefault()) {
+            console.warn(`Unauthorized (401) with custom domain ${activeDomain}. Falling back to system default domain: ${this.domain}`);
+            
+            // Switch to system defaults for this and future batches
+            activeDomain = this.domain;
+            activeFromEmail = this.fromEmail;
+            activeFromName = this.fromName;
 
-        // Add tags if provided
-        if (params.tags && params.tags.length > 0) {
-          messageData['o:tag'] = params.tags;
+            // Attempt 2: Retry with system defaults
+            result = await sendBatch(activeDomain, activeFromEmail, activeFromName);
+            console.log(`Fallback retry successful for batch ${i + 1} using system domain.`);
+          } else {
+            // Check specifically for the case described by user: "MailgunAPIError: Forbidden" which might be 401
+            // Sometimes error structure differs, so we check status or message
+            const isForbidden = error.status === 401 || (error.details && error.details === 'Forbidden');
+             if (isForbidden && !isUsingSystemDefault()) {
+                 console.warn(`Forbidden/Unauthorized with custom domain ${activeDomain}. Falling back to system default domain: ${this.domain}`);
+                
+                // Switch to system defaults for this and future batches
+                activeDomain = this.domain;
+                activeFromEmail = this.fromEmail;
+                activeFromName = this.fromName;
+
+                // Attempt 2: Retry with system defaults
+                result = await sendBatch(activeDomain, activeFromEmail, activeFromName);
+                console.log(`Fallback retry successful for batch ${i + 1} using system domain.`);
+             } else {
+                 throw error; // Re-throw if it's not a recoverable 401 or we're already on system default
+             }
+          }
         }
 
-        // Add recipient variables if provided
-        if (params.recipientVariables) {
-          messageData['recipient-variables'] = JSON.stringify(params.recipientVariables);
+        // Success handling
+        if (result) {
+           results.push({
+            messageId: result.id || '',
+            status: 'success',
+            recipientsSent: batch.length,
+          });
+          console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
         }
 
-        const result = await this.mg.messages.create(this.domain, messageData as any);
-        
-        results.push({
-          messageId: result.id || '',
-          status: 'success',
-          recipientsSent: batch.length,
-        });
-
-        console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
-
-        // Add a small delay between batches to avoid rate limiting
+        // Add a small delay between batches
         if (i < batches.length - 1) {
-          await this.delay(100); // 100ms delay
+          await this.delay(100); 
         }
+
       } catch (error: any) {
         console.error(`Error sending batch ${i + 1}:`, error);
         results.push({
@@ -177,7 +253,7 @@ export class MailgunService {
   }
 
   /**
-   * Send campaign with advanced tracking and tagging
+   * Send campaign with advanced tracking, tagging, and client-specific configuration
    */
   async sendCampaign(
     campaignId: string,
@@ -185,6 +261,8 @@ export class MailgunService {
     recipients: string[],
     subject: string,
     html: string,
+    recipientVariables?: Record<string, any>,
+    clientConfig?: ClientMailgunConfig,
     text?: string
   ): Promise<CampaignSendResult[]> {
     const tags = [
@@ -198,6 +276,8 @@ export class MailgunService {
       html,
       text,
       tags,
+      recipientVariables,
+      clientConfig,
     });
   }
 

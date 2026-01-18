@@ -1,10 +1,11 @@
 import { Campaign } from '../../core/entities/Campaign';
+import { CampaignStatus } from '@prisma/client';
 import prisma from '../../infrastructure/database/prisma';
 import { generateCronExpression, RecurringFrequencyType } from '../utils/cronGenerator';
 import { CreateCampaignInput, UpdateRecurringScheduleInput } from '../../presentation/validators/campaignValidators';
 
 export class CampaignRepository {
-  async create(data: CreateCampaignInput, clientId: string, userId: string): Promise<Campaign> {
+  async create(data: CreateCampaignInput, clientId: string, userId: string, initialStatus?: CampaignStatus): Promise<Campaign> {
     // Generate cron expression if recurring
     const recurringSchedule = data.isRecurring 
       ? generateCronExpression({
@@ -21,6 +22,7 @@ export class CampaignRepository {
         name: data.name,
         subject: data.subject,
         content: data.content,
+        status: initialStatus || 'DRAFT',
         isRecurring: data.isRecurring,
         recurringSchedule,
         recurringFrequency: data.recurringFrequency || 'NONE',
@@ -200,7 +202,7 @@ export class CampaignRepository {
     return await prisma.campaign.findMany({ 
       where: { 
         isRecurring: true, 
-        status: { in: ['APPROVED', 'DRAFT'] },
+        status: 'APPROVED',
         recurringFrequency: { not: 'NONE' }
       },
       include: {

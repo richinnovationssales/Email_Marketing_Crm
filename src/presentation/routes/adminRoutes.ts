@@ -18,7 +18,9 @@ router.use(authMiddleware);
 // Admin User Management (Super Admin Only)
 router.post('/users', rootAdminOnly, adminUserController.createAdmin);
 router.get('/users', rootAdminOnly, adminUserController.getAdmins);
+router.patch('/users/:id/toggle-status', rootAdminOnly, adminUserController.activateToggleAdmin);
 router.delete('/users/:id', rootAdminOnly, adminUserController.deleteAdmin);
+
 
 // Client Management (All Admins)
 router.use(adminOnly);

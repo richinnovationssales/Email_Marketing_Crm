@@ -13,8 +13,20 @@ import dashboardRoutes from './dashboardRoutes';
 import customFieldRoutes from './customFieldRoutes';
 import webhookRoutes from './webhookRoutes';
 import analyticsRoutes from './analyticsRoutes';
+import clientDomainRoutes from './clientDomainRoutes';
 
 const router = Router();
+
+//health check route
+router.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'user-service',
+    uptime: process.uptime(), // seconds
+    timestamp: new Date().toISOString()
+  });
+});
+
 
 // Public routes (no auth required)
 router.use('/webhooks', webhookRoutes);
@@ -32,5 +44,6 @@ router.use('/contact-groups', contactGroupRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/custom-fields', customFieldRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/client/domain', clientDomainRoutes);
 
 export default router;

@@ -42,4 +42,14 @@ export class AdminRepository {
         return { ...admin, role: admin.role as AdminRole };
     }
 
+    async update(
+    id: string,
+    data: Prisma.AdminUpdateInput
+  ): Promise<Admin> {
+    const admin = await prisma.admin.update({
+      where: { id },
+      data,
+    });
+    return { ...admin, role: admin.role as AdminRole };
+  }
 }
