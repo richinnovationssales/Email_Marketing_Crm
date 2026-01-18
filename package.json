@@ -1,15 +1,16 @@
 {
-  "name": "Email-campaign",
+  "name": "email_marketing_crm",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "dev": "nodemon --watch src --exec ts-node src/index.ts",
     "build": "tsc",
-    "migrate": "prisma migrate deploy",
+    "migrate:deploy": "prisma migrate deploy",
     "generate": "prisma generate",
     "db:reset": "prisma migrate reset --force --skip-generate",
-    "start:prod": "npm run generate && npm run migrate && node dist/index.js",
-    "create:superadmin": "ts-node scripts/createSuperAdmin.ts"
+    "start:prod": "node dist/index.js",
+    "create:superadmin": "ts-node scripts/createSuperAdmin.ts",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
