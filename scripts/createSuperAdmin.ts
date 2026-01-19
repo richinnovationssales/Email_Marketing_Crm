@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   const email = 'joshjoychan@smartsolutionsme.com';
-  const password = 'Root@123'; // Change this!
+  const password = 'Root@1234'; // Change this!
 
   // Check if any SUPER_ADMIN already exists
   const existingSuperAdmin = await prisma.admin.findFirst({
