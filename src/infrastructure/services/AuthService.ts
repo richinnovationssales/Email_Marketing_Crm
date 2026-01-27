@@ -6,7 +6,7 @@ import prisma from '../database/prisma';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const REFRESH_SECRET = process.env.REFRESH_SECRET || 'your-refresh-secret-key';
 const SALT_ROUNDS = 10;
-const ACCESS_TOKEN_EXPIRY = '15m';  // 15 minutes
+const ACCESS_TOKEN_EXPIRY = '30s';  // 30 seconds
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;  // 7 days
 
 export interface TokenPayload {
@@ -152,7 +152,7 @@ export class AuthService {
 
   // Legacy method for backwards compatibility
   async generateToken(payload: object): Promise<string> {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '1m' });
   }
 
   // Legacy method for backwards compatibility
