@@ -152,7 +152,7 @@ export class AuthService {
 
   // Legacy method for backwards compatibility
   async generateToken(payload: object): Promise<string> {
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '1m' });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
   }
 
   // Legacy method for backwards compatibility
