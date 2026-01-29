@@ -1,10 +1,12 @@
 // src/presentation/routes/analyticsRoutes.ts
 import { Router } from 'express';
 import { AnalyticsController } from '../controllers/AnalyticsController';
+import { ClientAnalyticsExportController } from '../controllers/ClientAnalyticsExportController';
 import { authMiddleware } from '../middlewares/authMiddleware';
 
 const router = Router();
 const analyticsController = new AnalyticsController();
+const exportController = new ClientAnalyticsExportController();
 
 // All analytics routes require authentication
 router.use(authMiddleware);
@@ -24,4 +26,8 @@ router.get('/campaigns/:id/timeline', analyticsController.getCampaignTimeline);
 // Recent email events
 router.get('/events', analyticsController.getRecentEvents);
 
+// Export comprehensive analytics data (Excel-friendly format)
+router.get('/export', exportController.getExportData);
+
 export default router;
+
