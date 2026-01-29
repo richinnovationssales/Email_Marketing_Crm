@@ -23,7 +23,14 @@ const stream = {
 
 app.use(morgan('tiny', { stream }));
 app.use(cors({
-  origin: '*',
+  origin: [
+    'http://localhost:3001',
+    'http://localhost:3000',
+    'https://email-marketing-crm-web.vercel.app',
+    'https://email-marketing-crm-web-git-main-sachin-projects-54e78147.vercel.app',
+    'https://email-marketing-crm-web-sachin-projects-54e78147.vercel.app'
+  ],
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
