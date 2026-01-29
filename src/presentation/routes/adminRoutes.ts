@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { ClientController } from '../controllers/admin/ClientController';
 import { AdminUserController } from '../controllers/admin/AdminUserController';
+import { AdminDomainController } from '../controllers/admin/AdminDomainController';
 import { PlanController } from '../controllers/PlanController';
 import { authMiddleware, adminOnly, rootAdminOnly } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validationMiddleware';
@@ -11,6 +12,7 @@ import { createPlanSchema, updatePlanSchema } from '../validations/planValidatio
 const router = Router();
 const clientController = new ClientController();
 const adminUserController = new AdminUserController();
+const adminDomainController = new AdminDomainController();
 const planController = new PlanController();
 
 router.use(authMiddleware);
@@ -20,6 +22,12 @@ router.post('/users', rootAdminOnly, adminUserController.createAdmin);
 router.get('/users', rootAdminOnly, adminUserController.getAdmins);
 router.patch('/users/:id/toggle-status', rootAdminOnly, adminUserController.activateToggleAdmin);
 router.delete('/users/:id', rootAdminOnly, adminUserController.deleteAdmin);
+
+// Client Domain Configuration (Super Admin Only)
+router.get('/clients/:clientId/domain', rootAdminOnly, adminDomainController.getDomainConfig);
+router.put('/clients/:clientId/domain', rootAdminOnly, adminDomainController.updateDomainConfig);
+router.delete('/clients/:clientId/domain', rootAdminOnly, adminDomainController.removeDomainConfig);
+router.get('/clients/:clientId/domain/history', rootAdminOnly, adminDomainController.getDomainHistory);
 
 
 // Client Management (All Admins)
