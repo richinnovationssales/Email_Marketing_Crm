@@ -11,6 +11,7 @@ import Logger from './infrastructure/logging/logger';
 import errorHandler from './presentation/middlewares/errorHandler';
 import prisma from './infrastructure/database/prisma';
 import { SendCampaign } from './core/use-cases/client/SendCampaign';
+import { MailgunService } from './infrastructure/services/MailgunService';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -44,7 +45,6 @@ const contactGroupRepository = new ContactGroupRepository();
 const emailService = new EmailService();
 
 // Initialize MailgunService if enabled
-import { MailgunService } from './infrastructure/services/MailgunService';
 let mailgunService: MailgunService | undefined;
 try {
   if (process.env.USE_MAILGUN === 'true') {
