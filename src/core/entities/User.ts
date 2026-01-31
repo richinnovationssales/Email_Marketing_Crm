@@ -1,7 +1,7 @@
-
-// import { UserRole } from '@prisma/client';
+// src/core/entities/User.ts
 
 import { UserRole } from '@prisma/client';
+import { Client } from './Client'; 
 
 export class User {
   constructor(
@@ -11,6 +11,11 @@ export class User {
     public role: UserRole,
     public clientId: string,
     public createdAt: Date,
-    public updatedAt: Date
+    public updatedAt: Date,
+    public client?: {
+      id : string;
+      isApproved : boolean;
+      isActive : boolean;
+    }
   ) { }
 }
