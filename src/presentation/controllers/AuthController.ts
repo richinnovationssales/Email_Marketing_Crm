@@ -56,7 +56,7 @@ export class AuthController {
 
       // Block unapproved clients
       if (user.client && !user.client.isApproved) {
-         res.status(StatusCodes.FORBIDDEN).json({
+        res.status(StatusCodes.FORBIDDEN).json({
           message: "Client account not approved by admin",
         });
         return;
@@ -311,13 +311,21 @@ export class AuthController {
       if (tokenData.userId) {
         const user = await prisma.user.findUnique({
           where: { id: tokenData.userId },
-          select: { id: true, email: true, role: true, clientId: true },
+          include: { client: true },
         });
 
         if (!user) {
           res
             .status(StatusCodes.UNAUTHORIZED)
             .json({ message: "User not found" });
+          return;
+        }
+
+        if (user.client && !user.client.isApproved) {
+          await authService.revokeAllUserTokens(user.id);
+          res.status(StatusCodes.FORBIDDEN).json({
+            message: "Client account not approved by admin",
+          });
           return;
         }
 
