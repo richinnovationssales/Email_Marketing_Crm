@@ -1,6 +1,8 @@
-import { User } from '../../core/entities/User';
-import prisma from '../../infrastructure/database/prisma';
-import { UserRole } from '@prisma/client';
+// src/infrastructure/repositories/UserRepository.ts
+import { User } from "../../core/entities/User";
+import prisma from "../../infrastructure/database/prisma";
+import { UserRole } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 export interface UserCreationData {
   email: string;
@@ -27,10 +29,19 @@ export class UserRepository {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return await prisma.user.findUnique({ where: { email } });
+    return await prisma.user.findUnique({
+      where: { email },
+      include: {
+        client: true,
+      },
+    });
   }
 
-  async update(id: string, data: Partial<User>, clientId?: string): Promise<User | null> {
+  async update(
+    id: string,
+    data: Prisma.UserUpdateInput,
+    clientId?: string,
+  ): Promise<User | null> {
     const where = clientId ? { id, clientId } : { id };
     // @ts-ignore
     const user = await prisma.user.findFirst({ where });
@@ -50,4 +61,3 @@ export class UserRepository {
     return await prisma.user.delete({ where: { id } });
   }
 }
-
