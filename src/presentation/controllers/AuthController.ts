@@ -54,10 +54,10 @@ export class AuthController {
         return;
       }
 
-      // Block unapproved clients
-      if (user.client && !user.client.isApproved) {
+      // Block unapproved or inactive clients
+      if (user.client && (!user.client.isApproved || !user.client.isActive)) {
         res.status(StatusCodes.FORBIDDEN).json({
-          message: "Client account not approved by admin",
+          message: "Client account is not active or not approved",
         });
         return;
       }
@@ -321,10 +321,10 @@ export class AuthController {
           return;
         }
 
-        if (user.client && !user.client.isApproved) {
+        if (user.client && (!user.client.isApproved || !user.client.isActive)) {
           await authService.revokeAllUserTokens(user.id);
           res.status(StatusCodes.FORBIDDEN).json({
-            message: "Client account not approved by admin",
+            message: "Client account is not active or not approved",
           });
           return;
         }
