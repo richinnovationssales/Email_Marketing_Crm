@@ -48,6 +48,7 @@ export class ClientDomainController {
   /**
    * PUT /client/domain - Configure or update domain (CLIENT_SUPER_ADMIN only)
    */
+  //this is the function to update domain config
   updateDomainConfig = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const clientId = req.user?.clientId;

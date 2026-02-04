@@ -86,11 +86,51 @@ export class SendCampaign {
         }
         
         // Build client Mailgun config - uses registrationEmail as fallback
-        const clientConfig: ClientMailgunConfig | undefined = client ? {
+        // Ensure fromEmail is always a valid email from the Mailgun domain
+        // Helper to validate email format (must contain @)
+        const isValidEmail = (email: string | null | undefined): email is string => {
+          return !!email && email.includes('@');
+        };
+        
+        // Try client emails first, but validate they're actually emails (not just domains)
+        let effectiveFromEmail: string | undefined;
+        if (isValidEmail(client.mailgunFromEmail)) {
+          effectiveFromEmail = client.mailgunFromEmail;
+        } else if (isValidEmail(client.registrationEmail)) {
+          effectiveFromEmail = client.registrationEmail;
+        } else {
+          effectiveFromEmail = process.env.MAILGUN_FROM_EMAIL;
+        }
+        
+        const effectiveFromName = client.mailgunFromName || client.name || process.env.MAILGUN_FROM_NAME || 'Email Service';
+        
+        if (!effectiveFromEmail || !isValidEmail(effectiveFromEmail)) {
+          throw new Error(`Invalid sender email configured: "${effectiveFromEmail}". Must be a valid email address (e.g., noreply@domain.com), not just a domain.`);
+        }
+
+        // Domain alignment: ensure fromEmail domain matches mailgunDomain to prevent
+        // Outlook "on behalf of" display caused by envelope/header domain mismatch
+        if (client.mailgunDomain && effectiveFromEmail) {
+          const fromDomain = effectiveFromEmail.split('@')[1];
+          if (fromDomain && fromDomain !== client.mailgunDomain) {
+            const localPart = effectiveFromEmail.split('@')[0];
+            const alignedEmail = `${localPart}@${client.mailgunDomain}`;
+            console.warn(
+              `Domain alignment: fromEmail domain "${fromDomain}" does not match mailgunDomain "${client.mailgunDomain}". ` +
+              `Auto-correcting from "${effectiveFromEmail}" to "${alignedEmail}" to prevent "on behalf of" display in Outlook.`
+            );
+            effectiveFromEmail = alignedEmail;
+          }
+        }
+
+        console.log(`Mailgun sender config - From: "${effectiveFromName}" <${effectiveFromEmail}>`);
+        console.log(`Client domain override: ${client.mailgunDomain || 'none (using system default)'}`);
+
+        const clientConfig: ClientMailgunConfig | undefined = {
           domain: client.mailgunDomain || undefined,
-          fromEmail: client.mailgunFromEmail || client.registrationEmail || process.env.MAILGUN_FROM_EMAIL!,
-          fromName: client.mailgunFromName || client.mailgunFromEmail || client.registrationEmail || undefined,
-        } : undefined;
+          fromEmail: effectiveFromEmail,
+          fromName: effectiveFromName,
+        };
         
         // Send via Mailgun with campaign tagging and client config
         const results = await this.mailgunService!.sendCampaign(

@@ -13,6 +13,9 @@ export interface ClientRegistrationData {
     adminEmail: string;
     adminPassword: string;
     registrationEmail?: string; // Default sender email (falls back to adminEmail)
+    mailgunDomain?: string;     // Client's verified Mailgun domain
+    mailgunFromEmail?: string;  // Override sender email
+    mailgunFromName?: string;   // Sender display name
     customFields?: CustomFieldDefinition[];
 }
 
@@ -51,6 +54,9 @@ export class ClientRegistrationUseCase {
                     name: data.name,
                     planId: data.planId,
                     registrationEmail: data.registrationEmail || data.adminEmail, // Default to adminEmail
+                    mailgunDomain: data.mailgunDomain,
+                    mailgunFromEmail: data.mailgunFromEmail,
+                    mailgunFromName: data.mailgunFromName,
                     isApproved: true,
                     isActive: true,
                     remainingMessages: plan.emailLimit // Initialize with plan limit
