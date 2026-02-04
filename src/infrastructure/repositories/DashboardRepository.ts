@@ -57,7 +57,7 @@ export class DashboardRepository {
     },
   });
 
-  console.log(client)
+  
 
 
   return {
