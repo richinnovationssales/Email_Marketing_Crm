@@ -32,6 +32,7 @@ export class GroupRepository {
             id: true,
             email: true,
             role: true,
+            contacts:true,
             createdAt: true,
             updatedAt: true
           }

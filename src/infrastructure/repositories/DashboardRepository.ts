@@ -13,39 +13,101 @@ export class DashboardRepository {
   }
 
   async getClientDashboard(clientId: string) {
-    const users = (await prisma.user.findMany({
-      where: { clientId }, omit: {
-        password: true,
-      }
-    })).filter((user) => user.role !== 'CLIENT_SUPER_ADMIN');
-    const campaigns = await prisma.campaign.findMany({
-      where: { clientId }, include: {
-        emailEvents: true,
-        groups: true,
+  const users = (await prisma.user.findMany({
+    where: { clientId },
+    omit: { password: true },
+  })).filter(u => u.role !== 'CLIENT_SUPER_ADMIN');
 
-      }
-    });
-    const contacts = await prisma.contact.findMany({
-      where: { clientId }, include: {
-        contactGroups: true,
-        customFieldValues: true
-      }
-    });
-    const groups = await prisma.group.findMany({
-      where: { clientId }, include: {
-        campaigns: true,
-        contactGroups: true
-      }
-    });
-    const templates = await prisma.template.findMany({ where: { clientId } });
-    return {
-      users,
-      campaigns,
-      contacts,
-      groups,
-      templates,
-    };
-  }
+  const campaigns = await prisma.campaign.findMany({
+    where: { clientId },
+    include: {
+      analytics: true,
+      groups: {
+        include: {
+          contactGroups: true,
+        },
+      },
+    },
+  });
+
+  const contacts = await prisma.contact.findMany({
+    where: { clientId },
+    include: {
+      contactGroups: true,
+      customFieldValues: true,
+    },
+  });
+
+  const groups = await prisma.group.findMany({
+    where: { clientId },
+    include: {
+      campaigns: true,
+      contactGroups: true,
+    },
+  });
+
+  const templates = await prisma.template.findMany({
+    where: { clientId },
+  });
+
+  const emailsRemaining = campaigns.reduce((total, campaign) => {
+    const totalContacts = campaign.groups.reduce(
+      (sum, group) => sum + group.contactGroups.length,
+      0
+    );
+
+    const sent = campaign?.analytics?.totalSent ?? 0;
+    return total + Math.max(totalContacts - sent, 0);
+  }, 0);
+
+  return {
+    users,
+    campaigns,
+    contacts,
+    groups,
+    templates,
+    emailsRemaining,
+  };
+}
+
+
+  // async getClientDashboard(clientId: string) {
+  //   const users = (await prisma.user.findMany({
+  //     where: { clientId }, omit: {
+  //       password: true,
+  //     }
+  //   })).filter((user) => user.role !== 'CLIENT_SUPER_ADMIN');
+  //   const campaigns = await prisma.campaign.findMany({
+  //     where: { clientId }, include: {
+  //       emailEvents: true,
+  //       groups: true,
+
+  //     }
+  //   });
+  //   const contacts = await prisma.contact.findMany({
+  //     where: { clientId }, include: {
+  //       contactGroups: true,
+  //       customFieldValues: true
+  //     }
+  //   });
+  //   const groups = await prisma.group.findMany({
+  //     where: { clientId }, include: {
+  //       campaigns: true,
+  //       contactGroups: true
+  //     }
+  //   });
+
+ 
+
+  //   const templates = await prisma.template.findMany({ where: { clientId } });
+  //   return {
+  //     users,
+  //     campaigns,
+  //     contacts,
+  //     groups,
+  //     templates,
+  //   };
+  // }
 
   async getEmployeeDashboard(clientId: string) {
     // For now, the employee dashboard will be the same as the client dashboard.
