@@ -50,15 +50,13 @@ export class DashboardRepository {
     where: { clientId },
   });
 
-  const emailsRemaining = campaigns.reduce((total, campaign) => {
-    const totalContacts = campaign.groups.reduce(
-      (sum, group) => sum + group.contactGroups.length,
-      0
-    );
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      remainingMessages: true,
+    },
+  });
 
-    const sent = campaign?.analytics?.totalSent ?? 0;
-    return total + Math.max(totalContacts - sent, 0);
-  }, 0);
 
   return {
     users,
@@ -66,7 +64,7 @@ export class DashboardRepository {
     contacts,
     groups,
     templates,
-    emailsRemaining,
+    emailsRemaining:client?.remainingMessages ?? 0,
   };
 }
 
