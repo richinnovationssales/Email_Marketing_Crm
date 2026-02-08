@@ -53,6 +53,21 @@ export class ClientRepository {
         return client;
     }
 
+    async findByRegistrationEmail(email: string): Promise<Client | null> {
+        const client = await prisma.client.findFirst({ where: { registrationEmail: email }, include: { plan: true } });
+        return client;
+    }
+
+    async findByMailgunDomain(domain: string): Promise<Client | null> {
+        const client = await prisma.client.findFirst({ where: { mailgunDomain: domain }, include: { plan: true } });
+        return client;
+    }
+
+    async findByMailgunFromEmail(email: string): Promise<Client | null> {
+        const client = await prisma.client.findFirst({ where: { mailgunFromEmail: email }, include: { plan: true } });
+        return client;
+    }
+
 
     async getAnalytics(clientId: string) {
         const [

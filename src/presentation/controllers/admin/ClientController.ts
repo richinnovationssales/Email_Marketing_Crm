@@ -46,6 +46,19 @@ export class ClientController {
         }
     }
 
+    private static readonly CLIENT_VALIDATION_ERRORS = [
+        'Client with this name already exists',
+        'User with this email already exists',
+        'A client with this registration email already exists',
+        'A client with this mailgun domain already exists',
+        'A client with this from email already exists',
+        'Plan not found',
+    ];
+
+    private isClientValidationError(message: string): boolean {
+        return ClientController.CLIENT_VALIDATION_ERRORS.some(err => message.startsWith(err));
+    }
+
     async createClient(req: AuthRequest, res: Response): Promise<void> {
         try {
             const client = await clientRegistration.execute(req.body);
@@ -53,8 +66,7 @@ export class ClientController {
         } catch (error: any) {
             console.error('Error creating client:', error);
 
-            if (error.message === 'Client with this name already exists' ||
-                error.message === 'User with this email already exists') {
+            if (error.message && this.isClientValidationError(error.message)) {
                 res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
                 return;
             }

@@ -117,29 +117,42 @@ export class CampaignAnalyticsService {
 
   /**
    * Increment a specific metric
+   * @param originalMailgunEvent - the raw Mailgun event name, used to distinguish unsubscribes from complaints
    */
-  async incrementMetric(campaignId: string, eventType: EmailEventType) {
+  async incrementMetric(campaignId: string, eventType: EmailEventType, originalMailgunEvent?: string) {
     const updateData: Record<string, { increment: number }> = {};
+    const createData: Record<string, number> = {};
 
     switch (eventType) {
       case 'SENT':
         updateData.totalSent = { increment: 1 };
+        createData.totalSent = 1;
         break;
       case 'DELIVERED':
         updateData.totalDelivered = { increment: 1 };
+        createData.totalDelivered = 1;
         break;
       case 'OPENED':
         updateData.totalOpened = { increment: 1 };
+        createData.totalOpened = 1;
         break;
       case 'CLICKED':
         updateData.totalClicked = { increment: 1 };
+        createData.totalClicked = 1;
         break;
       case 'BOUNCED':
       case 'FAILED':
         updateData.totalBounced = { increment: 1 };
+        createData.totalBounced = 1;
         break;
       case 'COMPLAINED':
-        updateData.totalComplaints = { increment: 1 };
+        if (originalMailgunEvent === 'unsubscribed') {
+          updateData.totalUnsubscribed = { increment: 1 };
+          createData.totalUnsubscribed = 1;
+        } else {
+          updateData.totalComplaints = { increment: 1 };
+          createData.totalComplaints = 1;
+        }
         break;
     }
 
@@ -149,12 +162,7 @@ export class CampaignAnalyticsService {
         update: updateData,
         create: {
           campaignId,
-          ...(eventType === 'SENT' ? { totalSent: 1 } : {}),
-          ...(eventType === 'DELIVERED' ? { totalDelivered: 1 } : {}),
-          ...(eventType === 'OPENED' ? { totalOpened: 1 } : {}),
-          ...(eventType === 'CLICKED' ? { totalClicked: 1 } : {}),
-          ...(eventType === 'BOUNCED' || eventType === 'FAILED' ? { totalBounced: 1 } : {}),
-          ...(eventType === 'COMPLAINED' ? { totalComplaints: 1 } : {}),
+          ...createData,
         },
       });
     }

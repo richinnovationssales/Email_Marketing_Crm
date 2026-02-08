@@ -21,6 +21,7 @@ export class DashboardRepository {
   const campaigns = await prisma.campaign.findMany({
     where: { clientId },
     include: {
+      emailEvents: true,
       analytics: true,
       groups: {
         include: {

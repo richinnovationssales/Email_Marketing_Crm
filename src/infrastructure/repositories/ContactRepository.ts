@@ -143,11 +143,27 @@ export class ContactRepository {
             contactId: true,
           },
         },
+        contactGroups: {
+          select: {
+            group: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 
     const hasMore = contacts.length > limit;
-    const data = hasMore ? contacts.slice(0, limit) : contacts;
+    const data = (hasMore ? contacts.slice(0, limit) : contacts).map(
+      ({ contactGroups, ...rest }) => ({
+        ...rest,
+        groupName: contactGroups.length > 0
+          ? contactGroups.map((cg) => cg.group.name).join(", ")
+          : null,
+      })
+    );
     const nextCursor = hasMore ? data[data.length - 1].id : null;
 
     return { data, nextCursor };

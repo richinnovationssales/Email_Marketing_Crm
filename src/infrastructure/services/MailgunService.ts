@@ -103,6 +103,9 @@ export class MailgunService {
       subject: params.subject,
       html: params.html,
       text: params.text,
+      'o:tracking': 'yes',
+      'o:tracking-opens': 'yes',
+      'o:tracking-clicks': 'yes',
     };
 
     // Add tags if provided
@@ -159,7 +162,6 @@ export class MailgunService {
         }
       }
 
-      // Add tags if provided
       const messageData: MailgunMessageData = {
         from: `${activeFromName} <${activeFromEmail}>`,
         to: batch,
@@ -167,6 +169,9 @@ export class MailgunService {
         html: params.html,
         text: params.text,
         'recipient-variables': JSON.stringify(recipientVars),
+        'o:tracking': 'yes',
+        'o:tracking-opens': 'yes',
+        'o:tracking-clicks': 'yes',
       };
 
       if (params.tags && params.tags.length > 0) {

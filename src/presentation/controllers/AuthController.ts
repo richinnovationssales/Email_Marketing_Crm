@@ -144,6 +144,15 @@ export class AuthController {
     }
   }
 
+  private static readonly REGISTRATION_VALIDATION_ERRORS = [
+    'Client with this name already exists',
+    'User with this email already exists',
+    'A client with this registration email already exists',
+    'A client with this mailgun domain already exists',
+    'A client with this from email already exists',
+    'Plan not found',
+  ];
+
   async registerClient(req: Request, res: Response): Promise<void> {
     try {
       const client = await clientSelfRegistration.execute(req.body);
@@ -158,8 +167,7 @@ export class AuthController {
     } catch (error: any) {
       console.error('Client registration error:', error);
 
-      if (error.message === 'Client with this name already exists' ||
-        error.message === 'User with this email already exists') {
+      if (error.message && AuthController.REGISTRATION_VALIDATION_ERRORS.some(e => error.message.startsWith(e))) {
         res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
         return;
       }
