@@ -191,68 +191,167 @@ export class ContactRepository {
     });
   }
 
-  async update(
-    id: string,
-    data: Partial<Contact>,
-    clientId: string
-  ): Promise<Contact | null> {
-    const { customFields, ...contactData } = data;
+async update(
+  id: string,
+  data: {
+    email?: string;
+    customFields?: Record<string, any>;
+    groupId?: string;
+  },
+  clientId: string
+): Promise<Contact | null> {
+  const { customFields, groupId, ...contactData } = data;
 
-    // First, verify the contact belongs to the client
-    const existingContact = await prisma.contact.findFirst({
-      where: { id, clientId },
-    });
-    if (!existingContact) {
-      return null;
+  // Ensure contact belongs to client
+  const existingContact = await prisma.contact.findFirst({
+    where: { id, clientId },
+  });
+  if (!existingContact) {
+  throw new Error("Contact not found");
+}
+
+
+  return await prisma.$transaction(async (tx) => {
+    // 1. Update base contact fields
+    if (Object.keys(contactData).length > 0) {
+      await tx.contact.update({
+        where: { id },
+        data: contactData,
+      });
     }
 
-    return await prisma.$transaction(async (tx) => {
-      // Update basic contact info
-      await tx.contact.update({ where: { id }, data: contactData });
-
-      // Update custom fields if provided
-      if (customFields) {
-        await Promise.all(
-          Object.entries(customFields).map(async ([customFieldId, value]) => {
-            await tx.contactCustomFieldValue.upsert({
-              where: {
-                contactId_customFieldId: {
-                  contactId: id,
-                  customFieldId,
-                },
-              },
-              create: {
-                contactId: id,
-                customFieldId,
-                value,
-              },
-              update: {
-                value,
-              },
-            });
-          })
-        );
+    // 2. Update group assignment (join table only, not returned)
+    if (groupId) {
+      const group = await tx.group.findFirst({
+        where: { id: groupId, clientId },
+      });
+      if (!group) {
+        throw new Error("Group not found or does not belong to this client");
       }
 
-      return await tx.contact.findUnique({
-        where: { id },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              email: true,
-              role: true,
-              createdAt: true,
-              updatedAt: true,
-            },
-          },
-          customFieldValues: {
-            include: { customField: true },
-          },
+      await tx.contactGroup.deleteMany({
+        where: { contactId: id },
+      });
+
+      await tx.contactGroup.create({
+        data: {
+          contactId: id,
+          groupId,
         },
       });
+    }
+
+    // 3. Update custom fields
+    if (customFields && Object.keys(customFields).length > 0) {
+      await Promise.all(
+        Object.entries(customFields).map(([customFieldId, value]) =>
+          tx.contactCustomFieldValue.upsert({
+            where: {
+              contactId_customFieldId: {
+                contactId: id,
+                customFieldId,
+              },
+            },
+            create: {
+              contactId: id,
+              customFieldId,
+              value,
+            },
+            update: {
+              value,
+            },
+          })
+        )
+      );
+    }
+
+    // 4. RETURN EXACT SAME SHAPE AS OLD METHOD ✅
+    return await tx.contact.findUnique({
+      where: { id },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        customFieldValues: {
+          include: {
+            customField: true,
+          },
+        },
+      },
     });
-  }
+  });
+}
+
+
+
+  // async update(
+  //   id: string,
+  //   data: Partial<Contact>,
+  //   clientId: string
+  // ): Promise<Contact | null> {
+  //   const { customFields, ...contactData } = data;
+
+  //   // First, verify the contact belongs to the client
+  //   const existingContact = await prisma.contact.findFirst({
+  //     where: { id, clientId },
+  //   });
+  //   if (!existingContact) {
+  //     return null;
+  //   }
+
+  //   return await prisma.$transaction(async (tx) => {
+  //     // Update basic contact info
+  //     await tx.contact.update({ where: { id }, data: contactData });
+
+  //     // Update custom fields if provided
+  //     if (customFields) {
+  //       await Promise.all(
+  //         Object.entries(customFields).map(async ([customFieldId, value]) => {
+  //           await tx.contactCustomFieldValue.upsert({
+  //             where: {
+  //               contactId_customFieldId: {
+  //                 contactId: id,
+  //                 customFieldId,
+  //               },
+  //             },
+  //             create: {
+  //               contactId: id,
+  //               customFieldId,
+  //               value,
+  //             },
+  //             update: {
+  //               value,
+  //             },
+  //           });
+  //         })
+  //       );
+  //     }
+
+  //     return await tx.contact.findUnique({
+  //       where: { id },
+  //       include: {
+  //         createdBy: {
+  //           select: {
+  //             id: true,
+  //             email: true,
+  //             role: true,
+  //             createdAt: true,
+  //             updatedAt: true,
+  //           },
+  //         },
+  //         customFieldValues: {
+  //           include: { customField: true },
+  //         },
+  //       },
+  //     });
+  //   });
+  // }
 
   async delete(id: string, clientId: string): Promise<Contact | null> {
     const existing = await prisma.contact.findUnique({
