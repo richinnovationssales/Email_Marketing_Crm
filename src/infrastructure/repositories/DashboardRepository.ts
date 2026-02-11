@@ -13,64 +13,41 @@ export class DashboardRepository {
   }
 
   async getClientDashboard(clientId: string) {
-  const users = (await prisma.user.findMany({
-    where: { clientId },
-    omit: { password: true },
-  })).filter(u => u.role !== 'CLIENT_SUPER_ADMIN');
-
-  const campaigns = await prisma.campaign.findMany({
-    where: { clientId },
-    include: {
-      emailEvents: true,
-      analytics: true,
-      groups: {
+    const [campaigns, contacts, groups, client] = await Promise.all([
+      prisma.campaign.findMany({
+        where: { clientId },
         include: {
-          contactGroups: true,
+          emailEvents: true,
+          analytics: true,
+          groups: {
+            include: {
+              contactGroups: true,
+            },
+          },
         },
-      },
-    },
-  });
+      }),
+      prisma.contact.findMany({
+        where: { clientId },
+      }),
+      prisma.group.findMany({
+        where: { clientId },
+      }),
 
-  const contacts = await prisma.contact.findMany({
-    where: { clientId },
-    include: {
-      contactGroups: true,
-      customFieldValues: true,
-    },
-  });
+      prisma.client.findUnique({
+        where: { id: clientId },
+        select: {
+          remainingMessages: true,
+        },
+      }),
+    ]);
 
-  const groups = await prisma.group.findMany({
-    where: { clientId },
-    include: {
-      campaigns: true,
-      contactGroups: true,
-    },
-  });
-
-  const templates = await prisma.template.findMany({
-    where: { clientId },
-  });
-
-  const client = await prisma.client.findUnique({
-    where: { id: clientId },
-    select: {
-      remainingMessages: true,
-    },
-  });
-
-  console.log('client')
-  
-
-console.log(client)
-  return {
-    users,
-    campaigns,
-    contacts,
-    groups,
-    templates,
-    emailsRemaining:client?.remainingMessages ?? 0,
-  };
-}
+    return {
+      campaigns,
+      contacts,
+      groups,
+      emailsRemaining: client?.remainingMessages ?? 0,
+    };
+  }
 
 
   // async getClientDashboard(clientId: string) {
