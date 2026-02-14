@@ -148,6 +148,37 @@ export class EmailEventRepository {
   }
 
   /**
+   * Find emails that already have a SENT event for a campaign.
+   * Used to prevent duplicate sends on retry after partial failure.
+   *
+   * @param sinceDate - Only consider SENT events after this date.
+   *   For recurring campaigns, pass campaign.sentAt so that previous cycles
+   *   are ignored and only the current (partial) cycle's sends are filtered.
+   */
+  async findSentRecipientsForCampaign(
+    campaignId: string,
+    clientId: string,
+    sinceDate?: Date | null
+  ): Promise<string[]> {
+    const where: Prisma.EmailEventWhereInput = {
+      campaignId,
+      clientId,
+      eventType: 'SENT',
+    };
+
+    if (sinceDate) {
+      where.timestamp = { gt: sinceDate };
+    }
+
+    const events = await prisma.emailEvent.findMany({
+      where,
+      select: { contactEmail: true },
+      distinct: ['contactEmail'],
+    });
+    return events.map(e => e.contactEmail);
+  }
+
+  /**
    * Get events timeline for a campaign
    */
   async getCampaignTimeline(campaignId: string) {

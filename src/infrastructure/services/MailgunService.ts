@@ -53,6 +53,7 @@ export interface CampaignSendResult {
   messageId: string;
   status: 'success' | 'error';
   recipientsSent: number;
+  recipients: string[];
   errors?: Array<{ recipient: string; error: string }>;
 }
 
@@ -231,6 +232,7 @@ export class MailgunService {
             messageId: result.id || '',
             status: 'success',
             recipientsSent: batch.length,
+            recipients: [...batch],
           });
           console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
         }
@@ -246,6 +248,7 @@ export class MailgunService {
           messageId: '',
           status: 'error',
           recipientsSent: 0,
+          recipients: [...batch],
           errors: batch.map(recipient => ({
             recipient,
             error: error.message || 'Unknown error',
