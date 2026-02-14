@@ -25,6 +25,7 @@ export class DashboardRepository {
             },
           },
         },
+        orderBy: { createdAt: 'desc' },
       }),
       prisma.contact.findMany({
         where: { clientId },
