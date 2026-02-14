@@ -23,7 +23,7 @@ export class GroupRepository {
     });
   }
 
-  async findAll(clientId: string): Promise<Group[]> {
+  async findAll(clientId: string): Promise<any[]> {
     return await prisma.group.findMany({
       where: { clientId },
       include: {
@@ -36,6 +36,9 @@ export class GroupRepository {
             createdAt: true,
             updatedAt: true
           }
+        },
+        _count: {
+          select: { contactGroups: true }
         }
       }
     });
