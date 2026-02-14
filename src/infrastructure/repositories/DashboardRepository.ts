@@ -13,7 +13,7 @@ export class DashboardRepository {
   }
 
   async getClientDashboard(clientId: string) {
-    const [campaigns, contacts, groups, client] = await Promise.all([
+    const [campaigns, contactCount, groupCount, client] = await Promise.all([
       prisma.campaign.findMany({
         where: { clientId },
         include: {
@@ -27,10 +27,10 @@ export class DashboardRepository {
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.contact.findMany({
+      prisma.contact.count({
         where: { clientId },
       }),
-      prisma.group.findMany({
+      prisma.group.count({
         where: { clientId },
       }),
 
@@ -44,8 +44,8 @@ export class DashboardRepository {
 
     return {
       campaigns,
-      contacts,
-      groups,
+      contactCount,
+      groupCount,
       emailsRemaining: client?.remainingMessages ?? 0,
     };
   }
