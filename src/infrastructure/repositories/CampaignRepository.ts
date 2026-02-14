@@ -198,6 +198,24 @@ export class CampaignRepository {
     return campaign ? campaign.groups : [];
   }
 
+  /**
+   * Atomically transition a campaign from one status to another.
+   * Returns true if the transition succeeded (row was updated), false if the
+   * campaign was already in a different status (claimed by another process).
+   */
+  async atomicStatusTransition(
+    id: string,
+    fromStatus: CampaignStatus,
+    toStatus: CampaignStatus,
+    clientId: string
+  ): Promise<boolean> {
+    const result = await prisma.campaign.updateMany({
+      where: { id, clientId, status: fromStatus },
+      data: { status: toStatus },
+    });
+    return result.count > 0;
+  }
+
   async findRecurring(): Promise<Campaign[]> {
     return await prisma.campaign.findMany({ 
       where: { 

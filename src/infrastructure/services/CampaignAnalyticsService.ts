@@ -208,7 +208,15 @@ export class CampaignAnalyticsService {
    */
   async getClientCampaignsAnalytics(clientId: string) {
     const campaigns = await prisma.campaign.findMany({
-      where: { clientId, status: 'SENT' },
+      where: {
+        clientId,
+        OR: [
+          { status: 'SENT' },
+          // Include recurring campaigns that have been sent at least once
+          // (they stay in APPROVED status after each send)
+          { isRecurring: true, sentAt: { not: null } },
+        ],
+      },
       include: { analytics: true },
       orderBy: { sentAt: 'desc' },
     });
