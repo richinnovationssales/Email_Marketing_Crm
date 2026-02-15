@@ -135,14 +135,14 @@ export class ContactRepository {
             updatedAt: true,
           },
         },
-        customFieldValues: {
-          select: {
-            id: true,
-            customFieldId: true,
-            value: true,
-            contactId: true,
-          },
-        },
+        // customFieldValues: {
+        //   select: {
+        //     id: true,
+        //     customFieldId: true,
+        //     value: true,
+        //     contactId: true,
+        //   },
+        // },
         contactGroups: {
           select: {
             group: {

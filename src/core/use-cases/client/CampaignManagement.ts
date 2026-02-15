@@ -1,5 +1,5 @@
 import { CampaignRepository } from '../../../infrastructure/repositories/CampaignRepository';
-import { Campaign } from '../../entities/Campaign';
+import { Campaign, CampaignSummary } from '../../entities/Campaign';
 import { 
   createCampaignSchema, 
   updateCampaignSchema,
@@ -23,7 +23,7 @@ export class CampaignManagement {
     return this.campaignRepository.create(validatedData, clientId, userId, initialStatus);
   }
 
-  async findAll(clientId: string): Promise<Campaign[]> {
+  async findAll(clientId: string): Promise<CampaignSummary[]> {
     return this.campaignRepository.findAll(clientId);
   }
 

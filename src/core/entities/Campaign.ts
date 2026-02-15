@@ -10,7 +10,7 @@ export interface Campaign {
   status: CampaignStatus;
   isRecurring: boolean;
   recurringSchedule: string | null;
-  
+
   // Enhanced recurring scheduling
   recurringFrequency: RecurringFrequency;
   recurringTime: string | null;        // HH:mm format
@@ -19,13 +19,27 @@ export interface Campaign {
   recurringDayOfMonth: number | null;  // 1-31
   recurringStartDate: Date | null;
   recurringEndDate: Date | null;
-  
+
   clientId: string;
   mailgunMessageIds?: string | null;
   mailgunTags?: string[];
   sentAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  subject: string;
+  status: CampaignStatus;
+  isRecurring: boolean;
+  recurringFrequency: RecurringFrequency;
+  sentAt: Date | null;
+  clientId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdById: string;
 }
 
 

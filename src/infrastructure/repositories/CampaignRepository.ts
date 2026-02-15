@@ -1,4 +1,4 @@
-import { Campaign } from '../../core/entities/Campaign';
+import { Campaign, CampaignSummary } from '../../core/entities/Campaign';
 import { CampaignStatus } from '@prisma/client';
 import prisma from '../../infrastructure/database/prisma';
 import { generateCronExpression, RecurringFrequencyType } from '../utils/cronGenerator';
@@ -53,10 +53,21 @@ export class CampaignRepository {
     });
   }
 
-  async findAll(clientId: string): Promise<Campaign[]> {
+  async findAll(clientId: string): Promise<CampaignSummary[]> {
     return await prisma.campaign.findMany({
       where: { clientId },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        subject: true,
+        status: true,
+        isRecurring: true,
+        recurringFrequency: true,
+        sentAt: true,
+        clientId: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
         createdBy: {
           select: {
             id: true,
@@ -66,7 +77,7 @@ export class CampaignRepository {
             updatedAt: true
           }
         },
-        groups: true
+        groups: true,
       },
       orderBy: { createdAt: 'desc' }
     });

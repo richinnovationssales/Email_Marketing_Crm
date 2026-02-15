@@ -19,11 +19,6 @@ export class DashboardRepository {
         include: {
           emailEvents: true,
           analytics: true,
-          groups: {
-            include: {
-              contactGroups: true,
-            },
-          },
         },
         orderBy: { createdAt: 'desc' },
       }),
