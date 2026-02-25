@@ -22,6 +22,7 @@ router.post('/users', rootAdminOnly, adminUserController.createAdmin);
 router.get('/users', rootAdminOnly, adminUserController.getAdmins);
 router.patch('/users/:id/toggle-status', rootAdminOnly, adminUserController.activateToggleAdmin);
 router.delete('/users/:id', rootAdminOnly, adminUserController.deleteAdmin);
+router.patch('/users/:id/promote-super-admin', rootAdminOnly, adminUserController.promoteToSuperAdmin);
 
 // Client Domain Configuration (Super Admin Only)
 router.get('/clients/:clientId/domain', rootAdminOnly, adminDomainController.getDomainConfig);
