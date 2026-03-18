@@ -23,4 +23,13 @@ export class GroupManagement {
   async delete(id: string, clientId: string): Promise<Group | null> {
     return this.groupRepository.delete(id, clientId);
   }
+
+  async findContactsByGroupId(
+    groupId: string,
+    clientId: string,
+    limit: number = 20,
+    cursor?: string
+  ): Promise<{ contacts: any[]; nextCursor: string | null }> {
+    return this.groupRepository.findContactsByGroupId(groupId, clientId, limit, cursor);
+  }
 }

@@ -32,7 +32,6 @@ export class GroupRepository {
             id: true,
             email: true,
             role: true,
-            contacts:true,
             createdAt: true,
             updatedAt: true
           }
@@ -42,6 +41,44 @@ export class GroupRepository {
         }
       }
     });
+  }
+
+  async findContactsByGroupId(
+    groupId: string,
+    clientId: string,
+    limit: number = 20,
+    cursor?: string
+  ): Promise<{ contacts: any[]; nextCursor: string | null }> {
+    const group = await prisma.group.findFirst({
+      where: { id: groupId, clientId },
+      select: { id: true }
+    });
+    if (!group) return { contacts: [], nextCursor: null };
+
+    const contactGroups = await prisma.contactGroup.findMany({
+      where: { groupId },
+      take: limit + 1,
+      orderBy: { contactId: 'asc' },
+      ...(cursor ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 } : {}),
+      include: {
+        contact: {
+          include: {
+            customFieldValues: {
+              include: { customField: true }
+            }
+          }
+        }
+      }
+    });
+
+    const hasMore = contactGroups.length > limit;
+    const results = hasMore ? contactGroups.slice(0, limit) : contactGroups;
+    const nextCursor = hasMore ? results[results.length - 1].contactId : null;
+
+    return {
+      contacts: results.map(cg => cg.contact),
+      nextCursor
+    };
   }
 
   async findById(id: string, clientId: string): Promise<any> {
@@ -58,6 +95,8 @@ export class GroupRepository {
           }
         },
         contactGroups: {
+          take: 30,
+          orderBy: { assignedAt: 'desc' },
           include: {
             contact: {
               include: {
@@ -69,6 +108,9 @@ export class GroupRepository {
               }
             }
           }
+        },
+        _count: {
+          select: { contactGroups: true }
         }
       }
     });
