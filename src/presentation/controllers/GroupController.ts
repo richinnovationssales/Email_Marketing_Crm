@@ -76,6 +76,24 @@ export class GroupController {
     }
   }
 
+  async getGroupContacts(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+      const { id } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+      const cursor = req.query.cursor as string | undefined;
+
+      const result = await groupManagementUseCase.findContactsByGroupId(id, req.user.clientId, limit, cursor);
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching group contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
   async deleteGroup(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user?.clientId) {
