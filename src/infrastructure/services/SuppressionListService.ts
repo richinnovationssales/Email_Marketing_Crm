@@ -71,15 +71,24 @@ export class SuppressionListService {
    * Filter out suppressed emails from a list of recipients
    */
   async filterSuppressedEmails(emails: string[], clientId: string): Promise<string[]> {
-    const suppressedEmails = await prisma.suppressionList.findMany({
-      where: {
-        email: { in: emails },
-        clientId,
-      },
-      select: { email: true },
-    });
+    // Batch the IN clause to avoid exceeding query size limits for large lists (40k+)
+    const BATCH_SIZE = 5000;
+    const suppressedSet = new Set<string>();
 
-    const suppressedSet = new Set(suppressedEmails.map((s) => s.email.toLowerCase()));
+    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+      const batch = emails.slice(i, i + BATCH_SIZE);
+      const suppressedEmails = await prisma.suppressionList.findMany({
+        where: {
+          email: { in: batch },
+          clientId,
+        },
+        select: { email: true },
+      });
+      for (const s of suppressedEmails) {
+        suppressedSet.add(s.email.toLowerCase());
+      }
+    }
+
     const filtered = emails.filter((email) => !suppressedSet.has(email.toLowerCase()));
 
     if (emails.length !== filtered.length) {
