@@ -115,8 +115,10 @@ export class SendCampaign {
 
         // Build recipient variables for personalization and privacy
         // This ensures each recipient only sees their own email in "To" field
+        const recipientEmailSet = new Set(recipientEmails);
         const recipientVariables: Record<string, any> = {};
-        for (const contact of uniqueContacts.filter(c => recipientEmails.includes(c.email))) {
+        for (const contact of uniqueContacts) {
+          if (!recipientEmailSet.has(contact.email)) continue;
           recipientVariables[contact.email] = {
             name: contact.firstName || contact.email.split('@')[0],
             firstName: contact.firstName || '',
@@ -187,16 +189,16 @@ export class SendCampaign {
           if (result.status === 'success') {
             messageIds.push(result.messageId);
 
-            // Log SENT events with the correct batch-specific messageId
-            for (const email of result.recipients) {
-              await this.emailEventRepository.create({
+            // Bulk-insert SENT events for this batch
+            await this.emailEventRepository.createMany(
+              result.recipients.map(email => ({
                 clientId,
                 campaignId,
                 contactEmail: email,
-                eventType: 'SENT',
+                eventType: 'SENT' as const,
                 mailgunId: result.messageId || undefined,
-              });
-            }
+              }))
+            );
 
             // Deduct credits immediately for this batch
             if (result.recipientsSent > 0) {

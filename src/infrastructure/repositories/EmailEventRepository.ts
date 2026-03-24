@@ -45,6 +45,23 @@ export class EmailEventRepository {
     });
   }
 
+  async createMany(dataArray: CreateEmailEventData[]) {
+    if (dataArray.length === 0) return;
+    const now = new Date();
+    return prisma.emailEvent.createMany({
+      data: dataArray.map(d => ({
+        clientId: d.clientId,
+        campaignId: d.campaignId,
+        contactEmail: d.contactEmail,
+        eventType: d.eventType,
+        mailgunId: d.mailgunId,
+        errorMessage: d.errorMessage,
+        metadata: d.metadata ? JSON.stringify(d.metadata) : null,
+        timestamp: d.timestamp || now,
+      })),
+    });
+  }
+
 
   async findMany(filters: EmailEventFilters, limit = 100, offset = 0) {
     const where: Prisma.EmailEventWhereInput = {};

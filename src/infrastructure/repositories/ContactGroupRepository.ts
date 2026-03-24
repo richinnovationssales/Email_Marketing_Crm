@@ -49,14 +49,29 @@ export class ContactGroupRepository {
       throw new Error('Group not found in this client');
     }
 
-    return await prisma.contactGroup.findMany({
-      where: {
-        groupId,
-      },
-      include: {
-        contact: true,
-      },
-    });
+    // Fetch in batches to avoid loading 40k+ records into memory at once
+    const BATCH_SIZE = 5000;
+    const allContacts: ContactGroup[] = [];
+    let cursor: string | undefined;
+
+    while (true) {
+      const batch: any[] = await prisma.contactGroup.findMany({
+        where: { groupId },
+        take: BATCH_SIZE,
+        ...(cursor
+          ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 }
+          : {}),
+        orderBy: { contactId: 'asc' },
+        include: { contact: true },
+      });
+
+      if (batch.length === 0) break;
+      allContacts.push(...batch);
+      cursor = batch[batch.length - 1].contactId;
+      if (batch.length < BATCH_SIZE) break;
+    }
+
+    return allContacts;
   }
 
   async assignMultipleContactsToGroup(contactIds: string[], groupId: string, clientId: string): Promise<{ groupId: string; assignedContactIds: string[] }> {
