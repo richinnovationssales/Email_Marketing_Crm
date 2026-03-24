@@ -196,6 +196,94 @@ export class EmailEventRepository {
   }
 
   /**
+   * Get events for a campaign using cursor-based pagination (memory-safe for large datasets)
+   */
+  async findByCampaignBatched(
+    campaignId: string,
+    batchSize: number = 5000,
+    callback: (events: { id: string; contactEmail: string; eventType: EmailEventType; timestamp: Date; errorMessage: string | null }[]) => Promise<void>
+  ) {
+    let cursor: string | undefined;
+    while (true) {
+      const events = await prisma.emailEvent.findMany({
+        where: { campaignId },
+        select: {
+          id: true,
+          contactEmail: true,
+          eventType: true,
+          timestamp: true,
+          errorMessage: true,
+        },
+        orderBy: { id: 'asc' },
+        take: batchSize,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (events.length === 0) break;
+      await callback(events);
+      cursor = events[events.length - 1].id;
+      if (events.length < batchSize) break;
+    }
+  }
+
+  /**
+   * Get all event counts + unique opens/clicks for a campaign in a single DB query.
+   * Much more efficient than separate groupBy + distinct queries for large datasets.
+   */
+  async getAggregatedCounts(campaignId: string): Promise<{
+    totalSent: number;
+    totalDelivered: number;
+    totalOpened: number;
+    totalClicked: number;
+    totalBounced: number;
+    totalUnsubscribed: number;
+    totalComplaints: number;
+    uniqueOpens: number;
+    uniqueClicks: number;
+  }> {
+    type AggRow = {
+      event_type: string;
+      total: bigint;
+      unique_contacts: bigint;
+    };
+
+    const rows = await prisma.$queryRaw<AggRow[]>`
+      SELECT
+        "eventType"          AS event_type,
+        COUNT(*)             AS total,
+        COUNT(DISTINCT "contactEmail") AS unique_contacts
+      FROM "EmailEvent"
+      WHERE "campaignId" = ${campaignId}
+      GROUP BY "eventType"
+    `;
+
+    const result = {
+      totalSent: 0, totalDelivered: 0, totalOpened: 0,
+      totalClicked: 0, totalBounced: 0, totalUnsubscribed: 0,
+      totalComplaints: 0, uniqueOpens: 0, uniqueClicks: 0,
+    };
+
+    for (const row of rows) {
+      const total = Number(row.total);
+      const unique = Number(row.unique_contacts);
+      switch (row.event_type) {
+        case 'SENT':        result.totalSent        = total; break;
+        case 'DELIVERED':   result.totalDelivered   = total; break;
+        case 'OPENED':      result.totalOpened      = total; result.uniqueOpens   = unique; break;
+        case 'CLICKED':     result.totalClicked     = total; result.uniqueClicks  = unique; break;
+        case 'BOUNCED':
+        case 'FAILED':      result.totalBounced    += total; break;
+        case 'COMPLAINED':  result.totalComplaints  = total; break;
+        // unsubscribed events are stored as COMPLAINED with original event tracked separately;
+        // if you store UNSUBSCRIBED as its own type, handle here:
+        case 'UNSUBSCRIBED': result.totalUnsubscribed = total; break;
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Get events timeline for a campaign
    */
   async getCampaignTimeline(campaignId: string) {

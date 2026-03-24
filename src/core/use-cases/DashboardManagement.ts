@@ -18,4 +18,8 @@ export class DashboardManagement {
   async getCampaignPerformanceReport(filters: { startDate?: Date, endDate?: Date, clientId?: string }) {
     return this.dashboardRepository.getCampaignPerformanceReport(filters);
   }
+
+  async getSentCampaignsForExport(clientId: string, startDate?: Date, endDate?: Date) {
+    return this.dashboardRepository.getSentCampaignsForExport(clientId, startDate, endDate);
+  }
 }
