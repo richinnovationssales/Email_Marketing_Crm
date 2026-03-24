@@ -45,14 +45,13 @@ export class CampaignAnalyticsService {
   }
 
   /**
-   * Update campaign analytics from event counts
+   * Update campaign analytics from event counts.
+   * Uses a single aggregated DB query instead of 3 separate queries — safe for large event tables.
    */
   async updateAnalyticsFromEvents(campaignId: string): Promise<CampaignAnalyticsData> {
-    const eventCounts = await this.emailEventRepository.countByCampaign(campaignId);
-    const uniqueOpens = await this.emailEventRepository.getUniqueCounts(campaignId, 'OPENED');
-    const uniqueClicks = await this.emailEventRepository.getUniqueCounts(campaignId, 'CLICKED');
-
-    const counts = this.parseEventCounts(eventCounts);
+    // Single query: all counts + unique opens/clicks in one round-trip
+    const counts = await this.emailEventRepository.getAggregatedCounts(campaignId);
+    const { uniqueOpens, uniqueClicks } = counts;
 
     // Calculate rates
     const openRate = counts.totalDelivered > 0
@@ -113,6 +112,55 @@ export class CampaignAnalyticsService {
       clickRate: analytics.clickRate,
       bounceRate: analytics.bounceRate,
     };
+  }
+
+  /**
+   * Increment a specific metric by a given count (for bulk operations like campaign sending)
+   */
+  async incrementMetricBy(campaignId: string, eventType: EmailEventType, count: number) {
+    if (count <= 0) return;
+
+    const updateData: Record<string, { increment: number }> = {};
+    const createData: Record<string, number> = {};
+
+    switch (eventType) {
+      case 'SENT':
+        updateData.totalSent = { increment: count };
+        createData.totalSent = count;
+        break;
+      case 'DELIVERED':
+        updateData.totalDelivered = { increment: count };
+        createData.totalDelivered = count;
+        break;
+      case 'OPENED':
+        updateData.totalOpened = { increment: count };
+        createData.totalOpened = count;
+        break;
+      case 'CLICKED':
+        updateData.totalClicked = { increment: count };
+        createData.totalClicked = count;
+        break;
+      case 'BOUNCED':
+      case 'FAILED':
+        updateData.totalBounced = { increment: count };
+        createData.totalBounced = count;
+        break;
+      case 'COMPLAINED':
+        updateData.totalComplaints = { increment: count };
+        createData.totalComplaints = count;
+        break;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.campaignAnalytics.upsert({
+        where: { campaignId },
+        update: updateData,
+        create: {
+          campaignId,
+          ...createData,
+        },
+      });
+    }
   }
 
   /**

@@ -17,7 +17,6 @@ export class DashboardRepository {
       prisma.campaign.findMany({
         where: { clientId },
         include: {
-          emailEvents: true,
           analytics: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -88,6 +87,28 @@ export class DashboardRepository {
     // For now, the employee dashboard will be the same as the client dashboard.
     // This can be changed later to show employee-specific data.
     return this.getClientDashboard(clientId);
+  }
+
+  /**
+   * Get sent campaigns with analytics for export (no raw events - those are fetched in batches separately)
+   */
+  async getSentCampaignsForExport(clientId: string, startDate?: Date, endDate?: Date) {
+    const where: any = { clientId, sentAt: { not: null } };
+    if (startDate || endDate) {
+      where.sentAt = { not: null };
+      if (startDate) where.sentAt.gte = startDate;
+      if (endDate) {
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        where.sentAt.lte = endOfDay;
+      }
+    }
+
+    return prisma.campaign.findMany({
+      where,
+      include: { analytics: true },
+      orderBy: { sentAt: 'desc' },
+    });
   }
 
   async getCampaignPerformanceReport(filters: { startDate?: Date, endDate?: Date, clientId?: string }) {

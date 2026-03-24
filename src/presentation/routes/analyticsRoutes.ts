@@ -20,6 +20,12 @@ router.get('/campaigns', analyticsController.getAllCampaignsAnalytics);
 // Specific campaign analytics
 router.get('/campaigns/:id', analyticsController.getCampaignAnalytics);
 
+// Recalculate analytics for a single campaign from raw events
+router.post('/campaigns/:id/recalculate', analyticsController.recalculateCampaignAnalytics.bind(analyticsController));
+
+// Recalculate analytics for ALL client campaigns (backfill historical data)
+router.post('/recalculate-all', analyticsController.recalculateAllAnalytics.bind(analyticsController));
+
 // Campaign event timeline
 router.get('/campaigns/:id/timeline', analyticsController.getCampaignTimeline);
 

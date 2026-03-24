@@ -5,12 +5,14 @@ import { EmailService } from '../../../infrastructure/services/EmailService';
 import { MailgunService, ClientMailgunConfig } from '../../../infrastructure/services/MailgunService';
 import { SuppressionListService } from '../../../infrastructure/services/SuppressionListService';
 import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
+import { CampaignAnalyticsService } from '../../../infrastructure/services/CampaignAnalyticsService';
 import { CampaignStatus } from '@prisma/client';
 
 export class SendCampaign {
   private suppressionListService: SuppressionListService;
   private emailEventRepository: EmailEventRepository;
   private clientRepository: ClientRepository;
+  private campaignAnalyticsService: CampaignAnalyticsService;
 
   constructor(
     private campaignRepository: CampaignRepository,
@@ -21,6 +23,7 @@ export class SendCampaign {
     this.suppressionListService = new SuppressionListService();
     this.emailEventRepository = new EmailEventRepository();
     this.clientRepository = new ClientRepository();
+    this.campaignAnalyticsService = new CampaignAnalyticsService();
   }
 
   async execute(campaignId: string, clientId: string, isRecurringExecution = false): Promise<void> {
@@ -200,6 +203,9 @@ export class SendCampaign {
               }))
             );
 
+            // Update campaign analytics with SENT count for this batch
+            await this.campaignAnalyticsService.incrementMetricBy(campaignId, 'SENT', result.recipients.length);
+
             // Deduct credits immediately for this batch
             if (result.recipientsSent > 0) {
               await this.clientRepository.update(clientId, {
@@ -290,6 +296,9 @@ export class SendCampaign {
             contactEmail: contact.email,
             eventType: 'SENT',
           });
+
+          // Update campaign analytics with SENT count
+          await this.campaignAnalyticsService.incrementMetricBy(campaignId, 'SENT', 1);
 
           // Deduct credit per email
           await this.clientRepository.update(clientId, { remainingMessages: { decrement: 1 } });
