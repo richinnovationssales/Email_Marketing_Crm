@@ -237,9 +237,10 @@ export class MailgunService {
           console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
         }
 
-        // Add a small delay between batches
+        // Add delay between batches to avoid rate limiting
         if (i < batches.length - 1) {
-          await this.delay(100); 
+          console.log(`Waiting 30 seconds before next batch...`);
+          await this.delay(30000); // 30 seconds
         }
 
       } catch (error: any) {
