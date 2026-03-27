@@ -139,14 +139,58 @@ export class AnalyticsController {
   }
 
   /**
-   * Recalculate analytics for a single campaign from raw email events
+   * Recalculate analytics for a single campaign from raw email events.
+   * Scoped to the authenticated client — verifies campaign ownership.
    * POST /analytics/campaigns/:id/recalculate
    */
   async recalculateCampaignAnalytics(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const result = await campaignAnalyticsService.updateAnalyticsFromEvents(id);
-      return res.status(200).json({ success: true, data: result });
+      const clientId = (req as any).user?.clientId;
+
+      if (!clientId) {
+        return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      // Verify the campaign belongs to this client
+      const campaign = await prisma.campaign.findFirst({
+        where: { id, clientId },
+        select: { id: true, name: true },
+      });
+
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found for this client' });
+      }
+
+      // Snapshot current values before recalculation
+      const before = await prisma.campaignAnalytics.findUnique({
+        where: { campaignId: id },
+      });
+
+      const after = await campaignAnalyticsService.updateAnalyticsFromEvents(id);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          campaignId: id,
+          campaignName: campaign.name,
+          before: before ? {
+            totalSent: before.totalSent,
+            totalDelivered: before.totalDelivered,
+            totalOpened: before.totalOpened,
+            totalClicked: before.totalClicked,
+            totalBounced: before.totalBounced,
+            totalUnsubscribed: before.totalUnsubscribed,
+            totalComplaints: before.totalComplaints,
+            uniqueOpens: before.uniqueOpens,
+            uniqueClicks: before.uniqueClicks,
+            openRate: before.openRate,
+            clickRate: before.clickRate,
+            bounceRate: before.bounceRate,
+          } : null,
+          after,
+        },
+      });
     } catch (error) {
       console.error('Error recalculating campaign analytics:', error);
       return res.status(500).json({ error: 'Failed to recalculate analytics' });
@@ -155,7 +199,8 @@ export class AnalyticsController {
 
   /**
    * Recalculate analytics for ALL campaigns of the current client from raw email events.
-   * Processes campaigns in parallel batches to avoid blocking on large event tables.
+   * Recomputes every metric from the EmailEvent table — the source of truth from webhooks.
+   * Net bounces: contacts that bounced but were never delivered are counted; retried+delivered are not.
    * POST /analytics/recalculate-all
    */
   async recalculateAllAnalytics(req: Request, res: Response) {
@@ -165,28 +210,46 @@ export class AnalyticsController {
         return res.status(401).json({ error: 'Client ID not found in token' });
       }
 
-      // Fetch only campaign IDs — no need to load full records
+      // Fetch campaign IDs + current analytics snapshot for before/after comparison
       const campaigns = await prisma.campaign.findMany({
         where: { clientId },
-        select: { id: true, name: true },
+        select: { id: true, name: true, analytics: true },
         orderBy: { createdAt: 'asc' },
       });
 
-      const CONCURRENCY = 5; // process 5 campaigns at a time
-      const results: { campaignId: string; name: string; status: string; error?: string }[] = [];
+      const CONCURRENCY = 5;
+      const results: {
+        campaignId: string;
+        name: string;
+        status: string;
+        before: { totalBounced: number; bounceRate: number; totalDelivered: number } | null;
+        after: { totalBounced: number; bounceRate: number; totalDelivered: number } | null;
+        error?: string;
+      }[] = [];
 
-      // Chunk campaigns into batches of CONCURRENCY
       for (let i = 0; i < campaigns.length; i += CONCURRENCY) {
         const batch = campaigns.slice(i, i + CONCURRENCY);
 
         const batchResults = await Promise.allSettled(
-          batch.map((c) =>
-            campaignAnalyticsService.updateAnalyticsFromEvents(c.id).then(() => ({
+          batch.map(async (c) => {
+            const before = c.analytics;
+            const after = await campaignAnalyticsService.updateAnalyticsFromEvents(c.id);
+            return {
               campaignId: c.id,
               name: c.name,
               status: 'updated' as const,
-            }))
-          )
+              before: before ? {
+                totalBounced: before.totalBounced,
+                bounceRate: before.bounceRate,
+                totalDelivered: before.totalDelivered,
+              } : null,
+              after: {
+                totalBounced: after.totalBounced,
+                bounceRate: after.bounceRate,
+                totalDelivered: after.totalDelivered,
+              },
+            };
+          })
         );
 
         for (let j = 0; j < batchResults.length; j++) {
@@ -198,6 +261,8 @@ export class AnalyticsController {
               campaignId: batch[j].id,
               name: batch[j].name,
               status: 'error',
+              before: null,
+              after: null,
               error: r.reason instanceof Error ? r.reason.message : 'Unknown error',
             });
           }
@@ -206,12 +271,16 @@ export class AnalyticsController {
 
       const updated = results.filter((r) => r.status === 'updated').length;
       const failed  = results.filter((r) => r.status === 'error').length;
+      const corrected = results.filter((r) =>
+        r.before && r.after && r.before.totalBounced !== r.after.totalBounced
+      ).length;
 
       return res.status(200).json({
         success: true,
         total: campaigns.length,
         updated,
         failed,
+        corrected,
         results,
       });
     } catch (error) {

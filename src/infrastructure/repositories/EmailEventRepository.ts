@@ -257,6 +257,25 @@ export class EmailEventRepository {
       GROUP BY "eventType"
     `;
 
+    // Net bounces: count contacts that bounced/failed but were NEVER successfully delivered.
+    // Mailgun retries soft bounces — if it eventually delivers, that contact is NOT a real bounce.
+    type NetBounceRow = { net_bounces: bigint };
+    const netBounceRows = await prisma.$queryRaw<NetBounceRow[]>`
+      SELECT COUNT(*) AS net_bounces
+      FROM (
+        SELECT DISTINCT "contactEmail"
+        FROM "EmailEvent"
+        WHERE "campaignId" = ${campaignId}
+          AND "eventType" IN ('BOUNCED', 'FAILED')
+          AND "contactEmail" NOT IN (
+            SELECT DISTINCT "contactEmail"
+            FROM "EmailEvent"
+            WHERE "campaignId" = ${campaignId}
+              AND "eventType" = 'DELIVERED'
+          )
+      ) AS undelivered_bounces
+    `;
+
     const result = {
       totalSent: 0, totalDelivered: 0, totalOpened: 0,
       totalClicked: 0, totalBounced: 0, totalUnsubscribed: 0,
@@ -272,13 +291,14 @@ export class EmailEventRepository {
         case 'OPENED':      result.totalOpened      = total; result.uniqueOpens   = unique; break;
         case 'CLICKED':     result.totalClicked     = total; result.uniqueClicks  = unique; break;
         case 'BOUNCED':
-        case 'FAILED':      result.totalBounced    += total; break;
+        case 'FAILED':      break; // handled by net bounce query
         case 'COMPLAINED':  result.totalComplaints  = total; break;
-        // unsubscribed events are stored as COMPLAINED with original event tracked separately;
-        // if you store UNSUBSCRIBED as its own type, handle here:
         case 'UNSUBSCRIBED': result.totalUnsubscribed = total; break;
       }
     }
+
+    // Use net bounces: only contacts that bounced and were never delivered
+    result.totalBounced = Number(netBounceRows[0]?.net_bounces ?? 0);
 
     return result;
   }
