@@ -11,6 +11,11 @@ import { CustomFieldRepository } from '../../infrastructure/repositories/CustomF
 import { AuthService, TokenPayload } from '../../infrastructure/services/AuthService';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import prisma from '../../infrastructure/database/prisma';
+import { ForgotPasswordUseCase } from '../../core/use-cases/auth/ForgotPasswordUseCase';
+import { ResetPasswordUseCase } from '../../core/use-cases/auth/ResetPasswordUseCase';
+import { EmailService } from '../../infrastructure/services/EmailService';
+
+
 
 const userRepository = new UserRepository();
 const adminRepository = new AdminRepository();
@@ -24,6 +29,12 @@ const clientSelfRegistration = new ClientSelfRegistrationUseCase(
   userRepository,
   customFieldRepository
 );
+
+const emailService = new EmailService();
+const forgotPasswordUseCase = new ForgotPasswordUseCase(userRepository, authService, emailService);
+const resetPasswordUseCase  = new ResetPasswordUseCase(userRepository, authService);
+
+
 
 
 export class AuthController {
@@ -339,6 +350,69 @@ export class AuthController {
       });
     } catch (error) {
       console.error('Logout error:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
+
+
+  /**
+   * Initiate password reset — send reset link to email
+   * POST /auth/forgot-password
+   * Body: { email: string }
+   */
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+ 
+      // Always respond with 200 to prevent user enumeration
+      await forgotPasswordUseCase.execute(email);
+ 
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      // Still return 200 — never leak internal errors here
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    }
+  }
+
+
+    /**
+   * Complete password reset — validate token and set new password
+   * POST /auth/reset-password
+   * Body: { token: string; newPassword: string }
+   */
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+ 
+      await resetPasswordUseCase.execute(token, newPassword);
+ 
+      res.json({
+        success: true,
+        message: 'Password has been reset successfully. Please log in with your new password.',
+      });
+    } catch (error: any) {
+      console.error('Reset password error:', error);
+ 
+      if (error.message === 'INVALID_OR_EXPIRED_TOKEN') {
+        res.status(StatusCodes.BAD_REQUEST).json({
+          message: 'This reset link is invalid or has expired. Please request a new one.',
+        });
+        return;
+      }
+ 
+      if (error.message === 'USER_NOT_FOUND') {
+        res.status(StatusCodes.NOT_FOUND).json({ message: 'User not found.' });
+        return;
+      }
+ 
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }

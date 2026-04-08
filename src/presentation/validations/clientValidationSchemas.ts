@@ -43,6 +43,28 @@ export const clientRegistrationSchema = z.object({
     path: ['mailgunFromEmail'],
 });
 
+
+export const forgotPasswordSchema = z.object({
+  email: z
+    .string({ message: 'Email is required' })
+    .email('Must be a valid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z
+    .string({ message: 'Token is required' })
+    .min(1, 'Token is required'),
+
+  newPassword: z
+    .string({ message: 'New password is required' })
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput  = z.infer<typeof resetPasswordSchema>;
 export const clientSelfRegistrationSchema = clientRegistrationSchema;
 
 export type ClientRegistrationInput = z.infer<typeof clientRegistrationSchema>;

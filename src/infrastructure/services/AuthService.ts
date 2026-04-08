@@ -8,6 +8,7 @@ const REFRESH_SECRET = process.env.REFRESH_SECRET || 'your-refresh-secret-key';
 const SALT_ROUNDS = 10;
 const ACCESS_TOKEN_EXPIRY = '15m';  // 15 minutes
 const REFRESH_TOKEN_EXPIRY_DAYS = 7;  // 7 days
+const RESET_TOKEN_EXPIRY_MINUTES = 15;
 
 export interface TokenPayload {
   id: string;
@@ -23,6 +24,8 @@ export interface TokenPair {
 }
 
 export class AuthService {
+
+  
   async hashPassword(password: string): Promise<string> {
     return bcrypt.hash(password, SALT_ROUNDS);
   }
@@ -158,6 +161,69 @@ export class AuthService {
   // Legacy method for backwards compatibility
   async verifyToken(token: string): Promise<any> {
     return jwt.verify(token, JWT_SECRET);
+  }
+
+    /**
+   * Generate a password reset token and persist it.
+   * Returns the raw token to be emailed to the user.
+   */
+  async generatePasswordResetToken(userId: string): Promise<string> {
+    // Invalidate any existing unused tokens for this user first
+    await prisma.passwordResetToken.updateMany({
+      where: { userId, usedAt: null, expiresAt: { gt: new Date() } },
+      data: { expiresAt: new Date() }, // expire them immediately
+    });
+ 
+    const token = crypto.randomBytes(32).toString('hex');
+ 
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + RESET_TOKEN_EXPIRY_MINUTES);
+ 
+    await prisma.passwordResetToken.create({
+      data: { token, userId, expiresAt },
+    });
+ 
+    return token;
+  }
+  /**
+   * Verify a password reset token.
+   * Returns the userId if valid, null otherwise.
+   */
+  async verifyPasswordResetToken(token: string): Promise<string | null> {
+    const record = await prisma.passwordResetToken.findUnique({
+      where: { token },
+    });
+ 
+    if (!record) return null;
+    if (record.usedAt) return null;               // already consumed
+    if (new Date() > record.expiresAt) return null; // expired
+ 
+    return record.userId;
+  }
+ 
+  /**
+   * Mark a reset token as used so it cannot be replayed.
+   */
+  async consumePasswordResetToken(token: string): Promise<void> {
+    await prisma.passwordResetToken.update({
+      where: { token },
+      data: { usedAt: new Date() },
+    });
+  }
+ 
+  /**
+   * Cleanup expired / used password reset tokens (run as a cron job).
+   */
+  async cleanupPasswordResetTokens(): Promise<number> {
+    const result = await prisma.passwordResetToken.deleteMany({
+      where: {
+        OR: [
+          { expiresAt: { lt: new Date() } },
+          { usedAt: { not: null } },
+        ],
+      },
+    });
+    return result.count;
   }
 }
 
