@@ -376,7 +376,7 @@ export class AuthController {
       console.error('Forgot password error:', error);
       // Still return 200 — never leak internal errors here
       res.json({
-        success: true,
+        success: error instanceof Error ? error.message : 'An error occurred',
         message: 'If an account with that email exists, a password reset link has been sent.',
       });
     }
