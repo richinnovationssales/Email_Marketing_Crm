@@ -85,8 +85,9 @@ export class GroupController {
       const { id } = req.params;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const cursor = req.query.cursor as string | undefined;
+      const search = req.query.search as string | undefined;
 
-      const result = await groupManagementUseCase.findContactsByGroupId(id, req.user.clientId, limit, cursor);
+      const result = await groupManagementUseCase.findContactsByGroupId(id, req.user.clientId, limit, cursor,search);
       res.json(result);
     } catch (error) {
       console.error('Error fetching group contacts:', error);

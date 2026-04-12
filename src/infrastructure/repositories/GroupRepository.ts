@@ -1,5 +1,5 @@
-import { Group } from '../../core/entities/Group';
-import prisma from '../../infrastructure/database/prisma';
+import { Group } from "../../core/entities/Group";
+import prisma from "../../infrastructure/database/prisma";
 
 export class GroupRepository {
   async create(data: Group, clientId: string, userId: string): Promise<Group> {
@@ -7,7 +7,7 @@ export class GroupRepository {
       data: {
         ...data,
         clientId,
-        createdById: userId
+        createdById: userId,
       },
       include: {
         createdBy: {
@@ -16,10 +16,10 @@ export class GroupRepository {
             email: true,
             role: true,
             createdAt: true,
-            updatedAt: true
-          }
-        }
-      }
+            updatedAt: true,
+          },
+        },
+      },
     });
   }
 
@@ -33,53 +33,107 @@ export class GroupRepository {
             email: true,
             role: true,
             createdAt: true,
-            updatedAt: true
-          }
+            updatedAt: true,
+          },
         },
         _count: {
-          select: { contactGroups: true }
-        }
-      }
+          select: { contactGroups: true },
+        },
+      },
     });
   }
 
-  async findContactsByGroupId(
-    groupId: string,
-    clientId: string,
-    limit: number = 20,
-    cursor?: string
-  ): Promise<{ contacts: any[]; nextCursor: string | null }> {
-    const group = await prisma.group.findFirst({
-      where: { id: groupId, clientId },
-      select: { id: true }
-    });
-    if (!group) return { contacts: [], nextCursor: null };
+ async findContactsByGroupId(
+  groupId: string,
+  clientId: string,
+  limit: number = 20,
+  cursor?: string,
+  search?: string,
+): Promise<{ contacts: any[]; nextCursor: string | null }> {
+  const group = await prisma.group.findFirst({
+    where: { id: groupId, clientId },
+    select: { id: true }
+  });
+  if (!group) return { contacts: [], nextCursor: null };
 
-    const contactGroups = await prisma.contactGroup.findMany({
-      where: { groupId },
-      take: limit + 1,
-      orderBy: { contactId: 'asc' },
-      ...(cursor ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 } : {}),
-      include: {
+  const contactGroups = await prisma.contactGroup.findMany({
+    where: {
+      groupId,
+      ...(search && {
         contact: {
-          include: {
-            customFieldValues: {
-              include: { customField: true }
-            }
-          }
-        }
-      }
-    });
+          OR: [
+            { email: { contains: search, mode: 'insensitive' } },
+            {
+              customFieldValues: {
+                some: { value: { contains: search, mode: 'insensitive' } },
+              },
+            },
+          ],
+        },
+      }),
+    },
+    take: limit + 1,
+    orderBy: { contactId: 'asc' },
+    ...(cursor
+      ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 }
+      : {}),
+    include: {
+      contact: {
+        include: {
+          customFieldValues: { include: { customField: true } },
+        },
+      },
+    },
+  });
 
-    const hasMore = contactGroups.length > limit;
-    const results = hasMore ? contactGroups.slice(0, limit) : contactGroups;
-    const nextCursor = hasMore ? results[results.length - 1].contactId : null;
+  const hasMore = contactGroups.length > limit;
+  const results = hasMore ? contactGroups.slice(0, limit) : contactGroups;
 
-    return {
-      contacts: results.map(cg => cg.contact),
-      nextCursor
-    };
-  }
+  return {
+    contacts: results.map(cg => cg.contact),
+    nextCursor: hasMore ? results[results.length - 1].contactId : null,
+  };
+}
+
+  // async findContactsByGroupId(
+  //   groupId: string,
+  //   clientId: string,
+  //   limit: number = 20,
+  //   cursor?: string,
+  //   search?: string
+
+  // ): Promise<{ contacts: any[]; nextCursor: string | null }> {
+  //   const group = await prisma.group.findFirst({
+  //     where: { id: groupId, clientId },
+  //     select: { id: true }
+  //   });
+  //   if (!group) return { contacts: [], nextCursor: null };
+
+  //   const contactGroups = await prisma.contactGroup.findMany({
+  //     where: { groupId },
+  //     take: limit + 1,
+  //     orderBy: { contactId: 'asc' },
+  //     ...(cursor ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 } : {}),
+  //     include: {
+  //       contact: {
+  //         include: {
+  //           customFieldValues: {
+  //             include: { customField: true }
+  //           }
+  //         }
+  //       }
+  //     }
+  //   });
+
+  //   const hasMore = contactGroups.length > limit;
+  //   const results = hasMore ? contactGroups.slice(0, limit) : contactGroups;
+  //   const nextCursor = hasMore ? results[results.length - 1].contactId : null;
+
+  //   return {
+  //     contacts: results.map(cg => cg.contact),
+  //     nextCursor
+  //   };
+  // }
 
   async findById(id: string, clientId: string): Promise<any> {
     return await prisma.group.findFirst({
@@ -91,32 +145,36 @@ export class GroupRepository {
             email: true,
             role: true,
             createdAt: true,
-            updatedAt: true
-          }
+            updatedAt: true,
+          },
         },
         contactGroups: {
           take: 30,
-          orderBy: { assignedAt: 'desc' },
+          orderBy: { assignedAt: "desc" },
           include: {
             contact: {
               include: {
                 customFieldValues: {
                   include: {
-                    customField: true
-                  }
-                }
-              }
-            }
-          }
+                    customField: true,
+                  },
+                },
+              },
+            },
+          },
         },
         _count: {
-          select: { contactGroups: true }
-        }
-      }
+          select: { contactGroups: true },
+        },
+      },
     });
   }
 
-  async update(id: string, data: Partial<Group>, clientId: string): Promise<Group | null> {
+  async update(
+    id: string,
+    data: Partial<Group>,
+    clientId: string,
+  ): Promise<Group | null> {
     // First, verify the group belongs to the client
     const group = await prisma.group.findFirst({ where: { id, clientId } });
     if (!group) {

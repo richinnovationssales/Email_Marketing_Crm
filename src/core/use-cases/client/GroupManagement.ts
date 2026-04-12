@@ -28,8 +28,9 @@ export class GroupManagement {
     groupId: string,
     clientId: string,
     limit: number = 20,
-    cursor?: string
+    cursor?: string,
+    search?: string
   ): Promise<{ contacts: any[]; nextCursor: string | null }> {
-    return this.groupRepository.findContactsByGroupId(groupId, clientId, limit, cursor);
+    return this.groupRepository.findContactsByGroupId(groupId, clientId, limit, cursor, search);
   }
 }

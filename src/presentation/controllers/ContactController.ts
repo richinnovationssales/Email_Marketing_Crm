@@ -174,4 +174,28 @@ export class ContactController {
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }
+
+  async searchContacts(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user?.clientId) {
+      res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+      return;
+    }
+
+    const query = (req.query.q as string)?.trim();
+    if (!query) {
+      res.status(StatusCodes.BAD_REQUEST).json({ message: 'Search query "q" is required' });
+      return;
+    }
+
+    const cursor = req.query.cursor as string | undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+
+    const result = await contactManagementUseCase.search(req.user.clientId, query, cursor, limit);
+    res.json(result);
+  } catch (error) {
+    console.error('Error searching contacts:', error);
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+  }
+}
 }
