@@ -22,7 +22,7 @@ router.get('/verify', authMiddleware, authController.verifyUser);
 
 // ── Password reset (public — user is logged out) ──────────────────────────────
 router.post('/forgot-password', validateBody(forgotPasswordSchema), authController.forgotPassword);
-// router.post('/reset-password',  validateBody(resetPasswordSchema),  authController.resetPassword);
+router.post('/reset-password',  validateBody(resetPasswordSchema),  authController.resetPassword);
 
 
 
