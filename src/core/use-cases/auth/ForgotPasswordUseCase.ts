@@ -4,8 +4,8 @@ import { UserRepository } from '../../../infrastructure/repositories/UserReposit
 import { AuthService } from '../../../infrastructure/services/AuthService';
 import { EmailService } from '../../../infrastructure/services/EmailService';
 
-const APP_NAME = process.env.APP_NAME || 'MyApp';
-const APP_URL  = process.env.APP_URL  || 'http://localhost:3000';
+const APP_NAME = process.env.APP_NAME || 'Smart solutions';
+const APP_URL  = process.env.APP_URL  || 'https://emailcrm.smartsolutionsme.com';
 
 function buildResetEmailHtml(resetUrl: string): string {
   return `
