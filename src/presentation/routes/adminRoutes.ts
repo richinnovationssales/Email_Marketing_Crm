@@ -46,6 +46,7 @@ router.patch('/clients/:id/deactivate', clientController.deactivateClient);
 router.patch('/clients/:id/reactivate', clientController.reactivateClient);
 router.get('/clients/:id/analytics', clientController.getClientAnalytics);
 router.post('/clients/onboard', clientController.onboardClient);
+router.patch('/clients/:clientId/reset-password', clientController.resetClientPassword.bind(clientController));
 
 // Plan Management (All Admins)
 router.post('/plans', validateBody(createPlanSchema), planController.createPlan);
