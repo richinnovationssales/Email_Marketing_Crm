@@ -7,6 +7,7 @@ import { SuppressionListService } from '../../../infrastructure/services/Suppres
 import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
 import { CampaignAnalyticsService } from '../../../infrastructure/services/CampaignAnalyticsService';
 import { CampaignStatus } from '@prisma/client';
+import { personalizeContent, convertPlaceholdersToMailgun, extractPlaceholderKeys } from '../../utils/personalize';
 
 export class SendCampaign {
   private suppressionListService: SuppressionListService;
@@ -59,14 +60,14 @@ export class SendCampaign {
     // Fetch contacts from all assigned groups
     // @ts-ignore
     const groups = await this.campaignRepository.getGroups(campaignId, clientId);
-    const contacts = [];
+    const contacts: any[] = [];
     for (const group of groups) {
       const groupContacts = await this.contactGroupRepository.getContactsInGroup(group.id, clientId);
-      contacts.push(...groupContacts.map(gc => gc.contact));
+      contacts.push(...groupContacts.map((gc: any) => gc.contact));
     }
 
     // Deduplicate contacts by email
-    const uniqueContacts = [...new Map(contacts.map(item => [item['email'], item])).values()];
+    const uniqueContacts: any[] = [...new Map(contacts.map(item => [item['email'], item])).values()];
     let recipientEmails = uniqueContacts.map(contact => contact.email);
 
     console.log(`Campaign "${campaign.name}" has ${recipientEmails.length} unique recipients`);
@@ -116,18 +117,35 @@ export class SendCampaign {
       if (useMailgun) {
         console.log('Using Mailgun to send campaign');
 
+        // Extract all {{fieldKey}} placeholders used in the content so we can
+        // seed empty-string defaults for every key. Without this, Mailgun leaves
+        // %recipient.fieldKey% literally in the email for contacts with no value.
+        const contentPlaceholderKeys = extractPlaceholderKeys(campaign.content);
+
         // Build recipient variables for personalization and privacy
         // This ensures each recipient only sees their own email in "To" field
         const recipientEmailSet = new Set(recipientEmails);
         const recipientVariables: Record<string, any> = {};
         for (const contact of uniqueContacts) {
           if (!recipientEmailSet.has(contact.email)) continue;
-          recipientVariables[contact.email] = {
-            name: contact.firstName || contact.email.split('@')[0],
-            firstName: contact.firstName || '',
-            lastName: contact.lastName || '',
-          };
+          // Seed all placeholder keys with "" so Mailgun always substitutes
+          // (contacts missing a value show "" instead of raw %recipient.key%)
+          const vars: Record<string, string> = Object.fromEntries(
+            contentPlaceholderKeys.map((k) => [k, ''])
+          );
+          // Override with standard contact fields
+          vars.name = contact.firstName || contact.email.split('@')[0];
+          vars.firstName = contact.firstName || '';
+          vars.lastName = contact.lastName || '';
+          // Override with actual isNameField custom field values
+          for (const cfv of (contact.customFieldValues || [])) {
+            vars[cfv.customField.fieldKey] = cfv.value;
+          }
+          recipientVariables[contact.email] = vars;
         }
+
+        // Convert {{fieldKey}} → %recipient.fieldKey% for Mailgun batch personalization
+        const mailgunContent = convertPlaceholdersToMailgun(campaign.content);
 
         // Build client Mailgun config - uses registrationEmail as fallback
         const isValidEmail = (email: string | null | undefined): email is string => {
@@ -179,7 +197,7 @@ export class SendCampaign {
           clientId,
           recipientEmails,
           campaign.subject,
-          campaign.content,
+          mailgunContent,
           recipientVariables,
           clientConfig
         );
@@ -287,7 +305,8 @@ export class SendCampaign {
         let sentCount = 0;
         // Fallback to sequential sending via Nodemailer
         for (const contact of uniqueContacts.filter(c => recipientEmails.includes(c.email))) {
-          await this.emailService.sendMail(contact.email, campaign.subject, campaign.content);
+          const personalizedContent = personalizeContent(campaign.content, contact.customFieldValues || []);
+          await this.emailService.sendMail(contact.email, campaign.subject, personalizedContent);
 
           // Log SENT event immediately after each send
           await this.emailEventRepository.create({
