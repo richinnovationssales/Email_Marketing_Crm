@@ -111,6 +111,24 @@ export class DashboardRepository {
     });
   }
 
+  /**
+   * Lightweight fetch of just the two fields needed for the export summary
+   * (avoids loading all campaign records that getClientDashboard pulls).
+   */
+  async getClientSummary(clientId: string): Promise<{ emailsRemaining: number; totalContactCount: number }> {
+    const [client, contactCount] = await Promise.all([
+      prisma.client.findUnique({
+        where: { id: clientId },
+        select: { remainingMessages: true },
+      }),
+      prisma.contact.count({ where: { clientId } }),
+    ]);
+    return {
+      emailsRemaining: client?.remainingMessages ?? 0,
+      totalContactCount: contactCount,
+    };
+  }
+
   async getCampaignPerformanceReport(filters: { startDate?: Date, endDate?: Date, clientId?: string }) {
     const where: any = {};
     if (filters.clientId) {

@@ -22,4 +22,8 @@ export class DashboardManagement {
   async getSentCampaignsForExport(clientId: string, startDate?: Date, endDate?: Date) {
     return this.dashboardRepository.getSentCampaignsForExport(clientId, startDate, endDate);
   }
+
+  async getClientSummary(clientId: string) {
+    return this.dashboardRepository.getClientSummary(clientId);
+  }
 }
