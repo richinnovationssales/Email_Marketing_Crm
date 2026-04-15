@@ -25,6 +25,13 @@ export const checkClientApproval = async (
             return;
         }
 
+        if (!client.isActive) {
+            res.status(StatusCodes.FORBIDDEN).json({
+                message: 'Your account has been deactivated. Please contact support.'
+            });
+            return;
+        }
+
         if (!client.isApproved) {
             res.status(StatusCodes.FORBIDDEN).json({
                 message: 'Client not approved. Please wait for admin approval before accessing this resource.'

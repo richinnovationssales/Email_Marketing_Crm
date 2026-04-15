@@ -7,11 +7,14 @@ import { UserRepository } from '../../../infrastructure/repositories/UserReposit
 import { CustomFieldRepository } from '../../../infrastructure/repositories/CustomFieldRepository';
 import { PlanRepository } from '../../../infrastructure/repositories/PlanRepository';
 import { AuthRequest } from '../../middlewares/authMiddleware';
+import { AuthService } from '../../../infrastructure/services/AuthService';
+import prisma from '../../../infrastructure/database/prisma';
 
 const clientRepository = new ClientRepository();
 const userRepository = new UserRepository();
 const customFieldRepository = new CustomFieldRepository();
 const planRepository = new PlanRepository();
+const authService = new AuthService();
 const clientManagement = new ClientManagement(clientRepository, planRepository);
 const clientRegistration = new ClientRegistrationUseCase(
     clientRepository,
@@ -206,6 +209,37 @@ export class ClientController {
 
         } catch (error) {
             console.error('Error onboarding client:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+        }
+    }
+
+    // Reset client's CLIENT_SUPER_ADMIN password (admin & super admin only)
+    async resetClientPassword(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            const { clientId } = req.params;
+            const { newPassword } = req.body;
+
+            if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 8) {
+                res.status(StatusCodes.BAD_REQUEST).json({ message: 'newPassword must be at least 8 characters' });
+                return;
+            }
+
+            // Find the CLIENT_SUPER_ADMIN user for this client
+            const superAdminUser = await prisma.user.findFirst({
+                where: { clientId, role: 'CLIENT_SUPER_ADMIN' },
+            });
+
+            if (!superAdminUser) {
+                res.status(StatusCodes.NOT_FOUND).json({ message: 'No CLIENT_SUPER_ADMIN found for this client' });
+                return;
+            }
+
+            const hashed = await authService.hashPassword(newPassword);
+            await prisma.user.update({ where: { id: superAdminUser.id }, data: { password: hashed } });
+
+            res.json({ message: 'Password reset successfully' });
+        } catch (error) {
+            console.error('Error resetting client password:', error);
             res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
         }
     }

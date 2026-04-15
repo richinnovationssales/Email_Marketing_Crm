@@ -62,7 +62,16 @@ export class ContactGroupRepository {
           ? { cursor: { contactId_groupId: { contactId: cursor, groupId } }, skip: 1 }
           : {}),
         orderBy: { contactId: 'asc' },
-        include: { contact: true },
+        include: {
+          contact: {
+            include: {
+              customFieldValues: {
+                where: { customField: { isNameField: true } },
+                include: { customField: { select: { fieldKey: true } } },
+              },
+            },
+          },
+        },
       });
 
       if (batch.length === 0) break;

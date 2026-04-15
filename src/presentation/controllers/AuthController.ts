@@ -56,6 +56,23 @@ export class AuthController {
         return;
       }
 
+      // Check client status for client users
+      if (user.clientId) {
+        const client = await clientRepository.findById(user.clientId);
+        if (!client) {
+          res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid credentials' });
+          return;
+        }
+        if (!client.isActive) {
+          res.status(StatusCodes.FORBIDDEN).json({ message: 'Your account has been deactivated. Please contact support.' });
+          return;
+        }
+        if (!client.isApproved) {
+          res.status(StatusCodes.FORBIDDEN).json({ message: 'Your account is pending approval. Please wait for admin approval.' });
+          return;
+        }
+      }
+
       // Generate token pair
       const payload: TokenPayload = {
         id: user.id,

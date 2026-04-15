@@ -304,6 +304,24 @@ export class EmailEventRepository {
   }
 
   /**
+   * Count unique contacts (distinct contactEmail) who received a SENT event
+   * for any of the given campaign IDs. Used to compute "contacts reached" for
+   * a date-range export without loading all event rows into memory.
+   */
+  async countUniqueContactsByCampaigns(campaignIds: string[], clientId: string): Promise<number> {
+    if (campaignIds.length === 0) return 0;
+    type Row = { unique_contacts: bigint };
+    const rows = await prisma.$queryRaw<Row[]>`
+      SELECT COUNT(DISTINCT "contactEmail") AS unique_contacts
+      FROM "EmailEvent"
+      WHERE "clientId" = ${clientId}
+        AND "campaignId" = ANY(${campaignIds}::text[])
+        AND "eventType" = 'SENT'
+    `;
+    return Number(rows[0]?.unique_contacts ?? 0);
+  }
+
+  /**
    * Get events timeline for a campaign
    */
   async getCampaignTimeline(campaignId: string) {

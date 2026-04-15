@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { ClientDomainController } from '../controllers/ClientDomainController';
 import { authMiddleware, requireClientSuperAdmin } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 
 const router = Router();
 const controller = new ClientDomainController();
 
-// All routes require authentication and CLIENT_SUPER_ADMIN role
-router.use(authMiddleware, requireClientSuperAdmin);
+// All routes require authentication, active/approved client, and CLIENT_SUPER_ADMIN role
+router.use(authMiddleware, checkClientApproval, requireClientSuperAdmin);
 
 // Domain Configuration Routes
 router.get('/', controller.getDomainConfig);           // GET /client/domain

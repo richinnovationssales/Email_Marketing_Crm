@@ -12,6 +12,7 @@ import errorHandler from './presentation/middlewares/errorHandler';
 import prisma from './infrastructure/database/prisma';
 import { SendCampaign } from './core/use-cases/client/SendCampaign';
 import { MailgunService } from './infrastructure/services/MailgunService';
+import { PlanRenewalScheduler } from './infrastructure/services/PlanRenewalScheduler';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -65,8 +66,10 @@ const sendCampaignUseCase = new SendCampaign(
   mailgunService
 );
 const campaignScheduler = new CampaignScheduler(sendCampaignUseCase, campaignRepository);
+const planRenewalScheduler = new PlanRenewalScheduler();
 
 campaignScheduler.start();
+planRenewalScheduler.start();
 
 const server = app.listen(port, () => {
   Logger.info(`Server is running on port : ${port}`);
@@ -80,6 +83,8 @@ const gracefulShutdown = (signal: string) => {
     Logger.info('Database connection closed.');
     campaignScheduler.stop();
     Logger.info('Campaign scheduler stopped.');
+    planRenewalScheduler.stop();
+    Logger.info('Plan renewal scheduler stopped.');
     process.exit(0);
   });
 };

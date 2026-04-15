@@ -81,42 +81,49 @@ export class DashboardController {
       const startDate = req.query.startDate ? new Date(req.query.startDate as string) : undefined;
       const endDate = req.query.endDate ? new Date(req.query.endDate as string) : undefined;
 
-      // 1. Get dashboard stats (lightweight - uses analytics, no raw events)
-      const dashboard = await dashboardManagementUseCase.getClientDashboard(clientId);
-      const sentCampaigns = await dashboardManagementUseCase.getSentCampaignsForExport(clientId, startDate, endDate);
+      // 1. Fetch campaigns in the date range + lightweight client summary in parallel
+      const [sentCampaigns, clientSummary] = await Promise.all([
+        dashboardManagementUseCase.getSentCampaignsForExport(clientId, startDate, endDate),
+        dashboardManagementUseCase.getClientSummary(clientId),
+      ]);
 
-      // 2. Build campaign stats from analytics (same structure as frontend's CampaignStat[])
+      // 2. Build campaign stats from analytics (date-range filtered via sentCampaigns)
       const campaignStats = sentCampaigns.map((c: any) => {
         const delivered = c.analytics?.totalDelivered ?? 0;
         const opened = c.analytics?.uniqueOpens ?? 0;
         return {
           name: c.name,
-          date: c.sentAt ? `${formatDate(new Date(c.sentAt))} to ${formatDate(new Date(c.sentAt))}` : 'Not sent',
+          date: c.sentAt ? formatDate(new Date(c.sentAt)) : 'Not sent',
           delivered,
           opened,
         };
       });
 
-      // 3. Aggregate daily performance (same logic as frontend's areaChartData)
+      // 3. Aggregate daily performance
       const dailyMap: Record<string, { date: string; delivered: number; opened: number }> = {};
       for (const item of campaignStats) {
-        const date = item.date.split(' to ')[0];
-        if (!dailyMap[date]) {
-          dailyMap[date] = { date, delivered: 0, opened: 0 };
+        if (!dailyMap[item.date]) {
+          dailyMap[item.date] = { date: item.date, delivered: 0, opened: 0 };
         }
-        dailyMap[date].delivered += item.delivered;
-        dailyMap[date].opened += item.opened;
+        dailyMap[item.date].delivered += item.delivered;
+        dailyMap[item.date].opened += item.opened;
       }
       const dailyPerformance = Object.values(dailyMap).sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
       );
 
-      // 4. Compute overall stats
+      // 4. Compute stats — all scoped to the date range via sentCampaigns
+      const emailsSent = sentCampaigns.reduce((sum: number, c: any) => sum + (c.analytics?.totalSent ?? 0), 0);
+
+      // Unique contacts reached in this period (distinct recipients with a SENT event)
+      const campaignIdsInRange = sentCampaigns.map((c: any) => c.id);
+      const contactsReached = await emailEventRepository.countUniqueContactsByCampaigns(campaignIdsInRange, clientId);
+
       const stats = {
-        contacts: dashboard.contactCount,
-        campaigns: dashboard.campaigns.length,
-        emailsSent: dashboard.campaigns.reduce((sum: number, c: any) => sum + (c.analytics?.totalSent ?? 0), 0),
-        emailsRemaining: dashboard.emailsRemaining,
+        contacts: contactsReached,
+        campaigns: sentCampaigns.length,
+        emailsSent,
+        emailsRemaining: clientSummary.emailsRemaining,
       };
 
       const totalDelivered = campaignStats.reduce((sum: number, c: any) => sum + c.delivered, 0);
@@ -140,10 +147,10 @@ export class DashboardController {
       }
       wsSummary.addRow([]);
       wsSummary.addRow(['Metric', 'Value']);
-      wsSummary.addRow(['Total Contacts', stats.contacts]);
-      wsSummary.addRow(['Total Campaigns', stats.campaigns]);
+      wsSummary.addRow([startDate || endDate ? 'Contacts Reached' : 'Total Contacts', stats.contacts]);
+      wsSummary.addRow([startDate || endDate ? 'Campaigns in Period' : 'Total Campaigns', stats.campaigns]);
       wsSummary.addRow(['Emails Sent', stats.emailsSent]);
-      wsSummary.addRow(['Emails Remaining', stats.emailsRemaining]);
+      wsSummary.addRow(['Current Email Balance', stats.emailsRemaining]);
       wsSummary.addRow([]);
       wsSummary.addRow(['Performance Metrics', '']);
       wsSummary.addRow(['Total Delivered', totalDelivered]);

@@ -3,13 +3,15 @@ import { Router } from 'express';
 import { AnalyticsController } from '../controllers/AnalyticsController';
 import { ClientAnalyticsExportController } from '../controllers/ClientAnalyticsExportController';
 import { authMiddleware } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 
 const router = Router();
 const analyticsController = new AnalyticsController();
 const exportController = new ClientAnalyticsExportController();
 
-// All analytics routes require authentication
+// All analytics routes require authentication and active/approved client
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 // Client analytics overview
 router.get('/overview', analyticsController.getOverview);

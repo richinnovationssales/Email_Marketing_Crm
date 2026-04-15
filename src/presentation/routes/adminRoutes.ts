@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { ClientController } from '../controllers/admin/ClientController';
 import { AdminUserController } from '../controllers/admin/AdminUserController';
 import { AdminDomainController } from '../controllers/admin/AdminDomainController';
+import { AdminCustomFieldController } from '../controllers/admin/AdminCustomFieldController';
 import { PlanController } from '../controllers/PlanController';
 import { authMiddleware, adminOnly, rootAdminOnly } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validationMiddleware';
@@ -13,6 +14,7 @@ const router = Router();
 const clientController = new ClientController();
 const adminUserController = new AdminUserController();
 const adminDomainController = new AdminDomainController();
+const adminCustomFieldController = new AdminCustomFieldController();
 const planController = new PlanController();
 
 router.use(authMiddleware);
@@ -46,6 +48,11 @@ router.patch('/clients/:id/deactivate', clientController.deactivateClient);
 router.patch('/clients/:id/reactivate', clientController.reactivateClient);
 router.get('/clients/:id/analytics', clientController.getClientAnalytics);
 router.post('/clients/onboard', clientController.onboardClient);
+router.patch('/clients/:clientId/reset-password', clientController.resetClientPassword.bind(clientController));
+
+// Client Custom Field Management (All Admins)
+router.get('/clients/:clientId/custom-fields', adminCustomFieldController.getClientCustomFields.bind(adminCustomFieldController));
+router.patch('/clients/:clientId/custom-fields/:fieldId/set-name-field', adminCustomFieldController.setNameField.bind(adminCustomFieldController));
 
 // Plan Management (All Admins)
 router.post('/plans', validateBody(createPlanSchema), planController.createPlan);
