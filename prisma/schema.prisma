@@ -12,14 +12,12 @@ enum AdminRole {
   ADMIN
 }
 
-
-
 model Admin {
   id            String         @id @default(cuid())
   email         String         @unique
   password      String
   role          AdminRole      @default(ADMIN)
-  isActive      Boolean   @default(true)
+  isActive      Boolean        @default(true)
   refreshTokens RefreshToken[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -161,10 +159,30 @@ model Campaign {
   mailgunTags       String[] // Tags for tracking
   sentAt            DateTime? // Timestamp when campaign was sent
 
+  // Greeting (admin-managed template optionally picked or one-off snapshot)
+  greeting         Greeting? @relation(fields: [greetingId], references: [id], onDelete: SetNull)
+  greetingId       String?
+  greetingSnapshot String? // Frozen template captured at save-time so admin edits/deletes don't mutate sent campaigns
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
+}
+
+// Platform-global greeting templates managed by SUPER_ADMIN.
+// Tokens like {{firstName}} are validated against a fixed allow-list at write time.
+model Greeting {
+  id           String     @id @default(cuid())
+  name         String
+  template     String
+  isActive     Boolean    @default(true)
+  displayOrder Int        @default(0)
+  campaigns    Campaign[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([isActive])
 }
 
 model Contact {

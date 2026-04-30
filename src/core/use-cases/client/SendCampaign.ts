@@ -7,7 +7,7 @@ import { SuppressionListService } from '../../../infrastructure/services/Suppres
 import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
 import { CampaignAnalyticsService } from '../../../infrastructure/services/CampaignAnalyticsService';
 import { CampaignStatus } from '@prisma/client';
-import { personalizeContent, convertPlaceholdersToMailgun, extractPlaceholderKeys } from '../../utils/personalize';
+import { personalizeContent, convertPlaceholdersToMailgun, extractPlaceholderKeys, prependGreeting } from '../../utils/personalize';
 
 export class SendCampaign {
   private suppressionListService: SuppressionListService;
@@ -117,10 +117,14 @@ export class SendCampaign {
       if (useMailgun) {
         console.log('Using Mailgun to send campaign');
 
+        // Prepend greeting (if present) so its tokens flow through the same
+        // personalization pipeline as the body.
+        const fullContent = prependGreeting(campaign.content, campaign.greetingSnapshot);
+
         // Extract all {{fieldKey}} placeholders used in the content so we can
         // seed empty-string defaults for every key. Without this, Mailgun leaves
         // %recipient.fieldKey% literally in the email for contacts with no value.
-        const contentPlaceholderKeys = extractPlaceholderKeys(campaign.content);
+        const contentPlaceholderKeys = extractPlaceholderKeys(fullContent);
 
         // Build recipient variables for personalization and privacy
         // This ensures each recipient only sees their own email in "To" field
@@ -133,19 +137,24 @@ export class SendCampaign {
           const vars: Record<string, string> = Object.fromEntries(
             contentPlaceholderKeys.map((k) => [k, ''])
           );
-          // Override with standard contact fields
-          vars.name = contact.firstName || contact.email.split('@')[0];
-          vars.firstName = contact.firstName || '';
-          vars.lastName = contact.lastName || '';
-          // Override with actual isNameField custom field values
+          // Custom fields next, then built-in greeting tokens last so they
+          // always win — a custom field with key "firstName" can't shadow the
+          // contact's actual built-in firstName column.
           for (const cfv of (contact.customFieldValues || [])) {
             vars[cfv.customField.fieldKey] = cfv.value;
           }
+          const firstName = contact.firstName || '';
+          const lastName = contact.lastName || '';
+          vars.name = contact.firstName || contact.email.split('@')[0];
+          vars.firstName = firstName;
+          vars.lastName = lastName;
+          vars.fullName = `${firstName} ${lastName}`.trim();
+          vars.email = contact.email;
           recipientVariables[contact.email] = vars;
         }
 
         // Convert {{fieldKey}} → %recipient.fieldKey% for Mailgun batch personalization
-        const mailgunContent = convertPlaceholdersToMailgun(campaign.content);
+        const mailgunContent = convertPlaceholdersToMailgun(fullContent);
 
         // Build client Mailgun config - uses registrationEmail as fallback
         const isValidEmail = (email: string | null | undefined): email is string => {
@@ -303,9 +312,15 @@ export class SendCampaign {
         console.log('Using fallback EmailService (Nodemailer)');
 
         let sentCount = 0;
+        // Prepend greeting (if any) to the campaign body. Done once, outside the loop.
+        const fullContent = prependGreeting(campaign.content, campaign.greetingSnapshot);
         // Fallback to sequential sending via Nodemailer
         for (const contact of uniqueContacts.filter(c => recipientEmails.includes(c.email))) {
-          const personalizedContent = personalizeContent(campaign.content, contact.customFieldValues || []);
+          const personalizedContent = personalizeContent(
+            fullContent,
+            contact.customFieldValues || [],
+            { firstName: contact.firstName, lastName: contact.lastName, email: contact.email }
+          );
           await this.emailService.sendMail(contact.email, campaign.subject, personalizedContent);
 
           // Log SENT event immediately after each send

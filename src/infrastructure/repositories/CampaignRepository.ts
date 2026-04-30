@@ -32,6 +32,8 @@ export class CampaignRepository {
         recurringDayOfMonth: data.recurringDayOfMonth || null,
         recurringStartDate: data.recurringStartDate ? new Date(data.recurringStartDate) : null,
         recurringEndDate: data.recurringEndDate ? new Date(data.recurringEndDate) : null,
+        greetingId: data.greetingId || null,
+        greetingSnapshot: data.greetingSnapshot || null,
         clientId,
         createdById: userId,
         groups: data.groupIds ? {

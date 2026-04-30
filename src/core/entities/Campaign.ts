@@ -24,6 +24,8 @@ export interface Campaign {
   mailgunMessageIds?: string | null;
   mailgunTags?: string[];
   sentAt?: Date | null;
+  greetingId?: string | null;
+  greetingSnapshot?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
