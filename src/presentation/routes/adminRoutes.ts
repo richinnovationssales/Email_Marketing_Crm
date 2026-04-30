@@ -4,11 +4,13 @@ import { ClientController } from '../controllers/admin/ClientController';
 import { AdminUserController } from '../controllers/admin/AdminUserController';
 import { AdminDomainController } from '../controllers/admin/AdminDomainController';
 import { AdminCustomFieldController } from '../controllers/admin/AdminCustomFieldController';
+import { AdminGreetingController } from '../controllers/admin/AdminGreetingController';
 import { PlanController } from '../controllers/PlanController';
 import { authMiddleware, adminOnly, rootAdminOnly } from '../middlewares/authMiddleware';
 import { validateBody } from '../middlewares/validationMiddleware';
 import { clientRegistrationSchema } from '../validations/clientValidationSchemas';
 import { createPlanSchema, updatePlanSchema } from '../validations/planValidationSchemas';
+import { createGreetingSchema, updateGreetingSchema } from '../validations/greetingValidationSchemas';
 
 const router = Router();
 const clientController = new ClientController();
@@ -16,6 +18,7 @@ const adminUserController = new AdminUserController();
 const adminDomainController = new AdminDomainController();
 const adminCustomFieldController = new AdminCustomFieldController();
 const planController = new PlanController();
+const adminGreetingController = new AdminGreetingController();
 
 router.use(authMiddleware);
 
@@ -31,6 +34,13 @@ router.get('/clients/:clientId/domain', rootAdminOnly, adminDomainController.get
 router.put('/clients/:clientId/domain', rootAdminOnly, adminDomainController.updateDomainConfig);
 router.delete('/clients/:clientId/domain', rootAdminOnly, adminDomainController.removeDomainConfig);
 router.get('/clients/:clientId/domain/history', rootAdminOnly, adminDomainController.getDomainHistory);
+
+// Greeting Management (Super Admin Only) — platform-global greeting templates
+router.post('/greetings', rootAdminOnly, validateBody(createGreetingSchema), adminGreetingController.createGreeting.bind(adminGreetingController));
+router.get('/greetings', rootAdminOnly, adminGreetingController.getGreetings.bind(adminGreetingController));
+router.get('/greetings/:id', rootAdminOnly, adminGreetingController.getGreetingById.bind(adminGreetingController));
+router.put('/greetings/:id', rootAdminOnly, validateBody(updateGreetingSchema), adminGreetingController.updateGreeting.bind(adminGreetingController));
+router.delete('/greetings/:id', rootAdminOnly, adminGreetingController.deleteGreeting.bind(adminGreetingController));
 
 
 // Client Management (All Admins)
