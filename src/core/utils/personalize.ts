@@ -25,20 +25,21 @@ export function personalizeContent(
   customFieldValues: Array<{ value: string; customField: { fieldKey: string } }>,
   contact?: ContactBuiltins
 ): string {
-  // Custom fields seed the map first; built-in greeting tokens then override
-  // so e.g. {{firstName}} always resolves from the contact's actual column,
-  // not a custom field that happens to share the key.
+  // Custom fields seed the map first; built-in contact columns then override
+  // when they have a value. An empty/null column must NOT clobber a populated
+  // custom-field entry — some tenants store firstName/lastName only as custom
+  // fields (with isNameField=true) and never populate Contact.firstName/lastName.
   const valueMap: Record<string, string> = {};
   for (const cfv of customFieldValues) {
     valueMap[cfv.customField.fieldKey] = cfv.value;
   }
   if (contact) {
-    const firstName = contact.firstName ?? '';
-    const lastName = contact.lastName ?? '';
-    valueMap.firstName = firstName;
-    valueMap.lastName = lastName;
-    valueMap.fullName = `${firstName} ${lastName}`.trim();
-    valueMap.email = contact.email ?? '';
+    if (contact.firstName) valueMap.firstName = contact.firstName;
+    if (contact.lastName) valueMap.lastName = contact.lastName;
+    if (contact.email) valueMap.email = contact.email;
+    const resolvedFirst = valueMap.firstName ?? '';
+    const resolvedLast = valueMap.lastName ?? '';
+    valueMap.fullName = `${resolvedFirst} ${resolvedLast}`.trim();
   }
   return content.replace(/\{\{(\w+)\}\}/g, (_, key) => escapeHtml(valueMap[key] ?? ''));
 }

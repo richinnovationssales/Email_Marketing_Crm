@@ -137,18 +137,20 @@ export class SendCampaign {
           const vars: Record<string, string> = Object.fromEntries(
             contentPlaceholderKeys.map((k) => [k, ''])
           );
-          // Custom fields next, then built-in greeting tokens last so they
-          // always win — a custom field with key "firstName" can't shadow the
-          // contact's actual built-in firstName column.
+          // Custom fields seed the vars; built-in contact columns then override
+          // when they have a value. An empty/null column must NOT clobber a
+          // populated custom-field entry — some tenants store firstName/lastName
+          // only as custom fields (with isNameField=true) and never populate the
+          // Contact.firstName/lastName columns.
           for (const cfv of (contact.customFieldValues || [])) {
             vars[cfv.customField.fieldKey] = cfv.value;
           }
-          const firstName = contact.firstName || '';
-          const lastName = contact.lastName || '';
-          vars.name = contact.firstName || contact.email.split('@')[0];
-          vars.firstName = firstName;
-          vars.lastName = lastName;
-          vars.fullName = `${firstName} ${lastName}`.trim();
+          if (contact.firstName) vars.firstName = contact.firstName;
+          if (contact.lastName) vars.lastName = contact.lastName;
+          const resolvedFirst = vars.firstName || '';
+          const resolvedLast = vars.lastName || '';
+          vars.name = resolvedFirst || contact.email.split('@')[0];
+          vars.fullName = `${resolvedFirst} ${resolvedLast}`.trim();
           vars.email = contact.email;
           recipientVariables[contact.email] = vars;
         }
