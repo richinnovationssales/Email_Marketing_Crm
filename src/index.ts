@@ -33,6 +33,7 @@ app.use(cors({
     'https://email-marketing-crm-web.vercel.app',
     'https://email-marketing-crm-web-git-main-sachin-projects-54e78147.vercel.app',
     'https://email-marketing-crm-web-sachin-projects-54e78147.vercel.app',
+    'https://emailcrm.smartsolutionsme.com/',
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
