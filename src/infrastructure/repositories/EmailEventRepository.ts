@@ -306,28 +306,39 @@ export class EmailEventRepository {
    * opened / clicked, so none of those can exceed totalSent, and duplicate
    * webhook rows cannot inflate them.
    *
-   * Webhook rows are matched to their send by:
-   *   1. messageId + recipient (rows written after the idempotency migration), or
-   *   2. campaign + recipient for legacy rows with no messageId, limited to the
-   *      time between this send and the next send of the same campaign to the
-   *      same recipient, so recurring-campaign cycles are not mixed up.
+   * A webhook row is matched to exactly one send:
+   *   1. by messageId + recipient + client, when a SENT row with that messageId
+   *      exists (normal case after the idempotency migration), otherwise
+   *   2. by campaign + recipient + client, limited to the time between this send
+   *      and the next send of the same campaign to the same recipient, so
+   *      recurring-campaign cycles are kept apart. This covers legacy rows with
+   *      no messageId and any event whose messageId matches no recorded send.
+   *   An event that matches rule 1 is never considered for rule 2.
+   *
+   * SENT rows without a messageId (Nodemailer fallback) are each their own send.
+   * All date parameters are compared as UTC, independent of the DB session time zone.
    */
   async getSendOutcomeCounts(scope: SendOutcomeScope): Promise<SendOutcomeCounts> {
     if (!scope.clientId && !scope.campaignId) {
       throw new Error('getSendOutcomeCounts requires clientId or campaignId');
     }
 
+    // "timestamp" columns are TIMESTAMP(3) holding UTC wall-clock time. Prisma sends
+    // a JS Date as timestamptz, which Postgres would compare using the session time
+    // zone. Pass an ISO string and convert to UTC explicitly instead.
+    const utc = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
+
     const sendScope: Prisma.Sql[] = [Prisma.sql`"eventType" = 'SENT'`];
     if (scope.clientId) sendScope.push(Prisma.sql`"clientId" = ${scope.clientId}`);
     if (scope.campaignId) sendScope.push(Prisma.sql`"campaignId" = ${scope.campaignId}`);
     // Earlier sends are never needed: next_sent_at only looks forward in time.
     // The upper bound cannot be pushed down, because the next send after the
-    // window is what closes a legacy send's matching interval.
-    if (scope.sentFrom) sendScope.push(Prisma.sql`"timestamp" >= ${scope.sentFrom}`);
+    // window is what closes a send's fallback matching interval.
+    if (scope.sentFrom) sendScope.push(Prisma.sql`"timestamp" >= ${utc(scope.sentFrom)}`);
 
     const windowFilter: Prisma.Sql[] = [Prisma.sql`TRUE`];
-    if (scope.sentFrom) windowFilter.push(Prisma.sql`sent_at >= ${scope.sentFrom}`);
-    if (scope.sentBefore) windowFilter.push(Prisma.sql`sent_at < ${scope.sentBefore}`);
+    if (scope.sentFrom) windowFilter.push(Prisma.sql`sent_at >= ${utc(scope.sentFrom)}`);
+    if (scope.sentBefore) windowFilter.push(Prisma.sql`sent_at < ${utc(scope.sentBefore)}`);
 
     type Row = {
       total_sent: bigint;
@@ -343,15 +354,19 @@ export class EmailEventRepository {
 
     const rows = await prisma.$queryRaw<Row[]>`
       WITH sends_all AS (
-        SELECT "campaignId", "contactEmail", "messageId", MIN("timestamp") AS sent_at
+        SELECT "clientId", "campaignId", "contactEmail", "messageId",
+               MIN("id")        AS send_key,
+               MIN("timestamp") AS sent_at
         FROM "EmailEvent"
         WHERE ${Prisma.join(sendScope, ' AND ')}
-        GROUP BY "campaignId", "contactEmail", "messageId"
+        GROUP BY "clientId", "campaignId", "contactEmail", "messageId",
+                 CASE WHEN "messageId" IS NULL THEN "id" END
       ),
       sends AS (
         SELECT *,
           LEAD(sent_at) OVER (
-            PARTITION BY "campaignId", "contactEmail" ORDER BY sent_at
+            PARTITION BY "clientId", "campaignId", "contactEmail"
+            ORDER BY sent_at, send_key
           ) AS next_sent_at
         FROM sends_all
       ),
@@ -359,25 +374,35 @@ export class EmailEventRepository {
         SELECT * FROM sends WHERE ${Prisma.join(windowFilter, ' AND ')}
       ),
       matched AS (
-        SELECT w."campaignId", w."contactEmail", w."messageId", w.sent_at,
-               e."eventType", e."severity"
+        -- Rule 1: exact message id
+        SELECT w.send_key, e."eventType", e."severity"
         FROM window_sends w
         JOIN "EmailEvent" e
-          ON e."messageId" = w."messageId"
+          ON e."messageId"    = w."messageId"
          AND e."contactEmail" = w."contactEmail"
+         AND e."clientId"     = w."clientId"
         WHERE w."messageId" IS NOT NULL
           AND e."eventType" <> 'SENT'
         UNION ALL
-        SELECT w."campaignId", w."contactEmail", w."messageId", w.sent_at,
-               e."eventType", e."severity"
+        -- Rule 2: same campaign + recipient within this send's cycle, only for
+        -- events whose message id matches no recorded send
+        SELECT w.send_key, e."eventType", e."severity"
         FROM window_sends w
         JOIN "EmailEvent" e
-          ON e."campaignId" = w."campaignId"
+          ON e."campaignId"   = w."campaignId"
          AND e."contactEmail" = w."contactEmail"
-        WHERE e."messageId" IS NULL
-          AND e."eventType" <> 'SENT'
+         AND e."clientId"     = w."clientId"
+        WHERE e."eventType" <> 'SENT'
+          AND e."messageId" IS DISTINCT FROM w."messageId"
           AND e."timestamp" >= w.sent_at - INTERVAL '10 minutes'
           AND (w.next_sent_at IS NULL OR e."timestamp" < w.next_sent_at - INTERVAL '10 minutes')
+          AND NOT EXISTS (
+            SELECT 1 FROM "EmailEvent" s
+            WHERE s."eventType"    = 'SENT'
+              AND s."messageId"    = e."messageId"
+              AND s."contactEmail" = e."contactEmail"
+              AND s."clientId"     = e."clientId"
+          )
       ),
       per_send AS (
         SELECT
@@ -391,7 +416,7 @@ export class EmailEventRepository {
           COUNT(*) FILTER (WHERE "eventType" = 'OPENED')                    AS opens,
           COUNT(*) FILTER (WHERE "eventType" = 'CLICKED')                   AS clicks
         FROM matched
-        GROUP BY "campaignId", "contactEmail", "messageId", sent_at
+        GROUP BY send_key
       )
       SELECT
         (SELECT COUNT(*) FROM window_sends)                                 AS total_sent,
@@ -470,9 +495,9 @@ export class EmailEventRepository {
   /**
    * Get events timeline for a campaign
    */
-  async getCampaignTimeline(campaignId: string) {
+  async getCampaignTimeline(campaignId: string, clientId: string) {
     return prisma.emailEvent.findMany({
-      where: { campaignId },
+      where: { campaignId, clientId },
       orderBy: { timestamp: 'asc' },
       select: {
         id: true,

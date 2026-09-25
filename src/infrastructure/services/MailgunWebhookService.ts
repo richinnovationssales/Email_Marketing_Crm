@@ -1,6 +1,6 @@
 // src/infrastructure/services/MailgunWebhookService.ts
 import crypto from 'crypto';
-import { EmailEventType, SuppressionType } from '@prisma/client';
+import { EmailEventType, SuppressionType, Prisma } from '@prisma/client';
 import { EmailEventRepository, normalizeMessageId } from '../repositories/EmailEventRepository';
 import { SuppressionListService } from './SuppressionListService';
 import { CampaignAnalyticsService } from './CampaignAnalyticsService';
@@ -146,9 +146,24 @@ export class MailgunWebhookService {
       };
     }
 
+    // Only failed events carry a meaningful severity. "dropped" is always permanent.
+    const severity =
+      eventType === 'FAILED'
+        ? (eventData.severity?.toLowerCase() || (mailgunEvent === 'dropped' ? 'permanent' : undefined))
+        : undefined;
+
+    // Suppression updates are idempotent upserts. They also run for duplicates, so a
+    // Mailgun retry after a failure between the insert and this step still suppresses.
+    // Temporary failures are retried by Mailgun and must not suppress the contact.
+    const applySuppression = async () => {
+      if (eventType === 'FAILED' && severity === 'temporary') return;
+      await this.handleSuppressionListUpdate(eventType, eventData.recipient || '', clientId, eventData, mailgunEvent);
+    };
+
     // Fast path for retries. The unique constraint below is the real guarantee.
     if (await this.emailEventRepository.exists(mailgunEventId)) {
       console.log(`Duplicate event detected: ${mailgunEventId}`);
+      await applySuppression();
       return {
         success: true,
         eventType: mailgunEvent,
@@ -156,14 +171,7 @@ export class MailgunWebhookService {
       };
     }
 
-    // Only failed events carry a meaningful severity. "dropped" is always permanent.
-    const severity =
-      eventType === 'FAILED'
-        ? (eventData.severity?.toLowerCase() || (mailgunEvent === 'dropped' ? 'permanent' : undefined))
-        : undefined;
-
-    // Create email event record (exactly once per Mailgun event id)
-    const emailEvent = await this.emailEventRepository.createWebhookEventOnce({
+    const eventRecord = {
       clientId,
       campaignId: campaignId || undefined,
       contactEmail: eventData.recipient || '',
@@ -182,11 +190,31 @@ export class MailgunWebhookService {
         reason: eventData.reason,
       },
       timestamp: new Date(eventData.timestamp * 1000),
-    });
+    };
+
+    // Create email event record (exactly once per Mailgun event id)
+    let emailEvent;
+    try {
+      emailEvent = await this.emailEventRepository.createWebhookEventOnce(eventRecord);
+    } catch (error) {
+      // Foreign key violation: the campaign was deleted after sending. Keep the
+      // event (it still drives the client's suppression list) without the link.
+      if (
+        eventRecord.campaignId &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        console.warn(`Campaign ${eventRecord.campaignId} no longer exists; storing event ${mailgunEventId} without it`);
+        emailEvent = await this.emailEventRepository.createWebhookEventOnce({ ...eventRecord, campaignId: undefined });
+      } else {
+        throw error;
+      }
+    }
 
     if (!emailEvent) {
       // A concurrent delivery of the same event won the insert.
       console.log(`Duplicate event detected on insert: ${mailgunEventId}`);
+      await applySuppression();
       return {
         success: true,
         eventType: mailgunEvent,
@@ -196,14 +224,11 @@ export class MailgunWebhookService {
 
     // Campaign totals are recomputed from events (debounced) rather than
     // incremented per webhook, so they can never drift from the event table.
-    if (campaignId) {
-      this.campaignAnalyticsService.scheduleRefresh(campaignId);
+    if (emailEvent.campaignId) {
+      this.campaignAnalyticsService.scheduleRefresh(emailEvent.campaignId);
     }
 
-    // Temporary failures are retried by Mailgun and must not suppress the contact.
-    if (!(eventType === 'FAILED' && severity === 'temporary')) {
-      await this.handleSuppressionListUpdate(eventType, eventData.recipient || '', clientId, eventData, mailgunEvent);
-    }
+    await applySuppression();
 
     console.log(`Webhook processed successfully: ${eventType} event created`);
 

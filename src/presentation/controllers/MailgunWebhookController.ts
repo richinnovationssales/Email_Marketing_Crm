@@ -1,5 +1,6 @@
 // src/presentation/controllers/MailgunWebhookController.ts
 import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { MailgunWebhookService, MailgunWebhookPayload } from '../../infrastructure/services/MailgunWebhookService';
 
 const webhookService = new MailgunWebhookService();
@@ -57,13 +58,21 @@ export class MailgunWebhookController {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       const errorStack = error instanceof Error ? error.stack : '';
-      console.error(`[WEBHOOK ERROR] ${receivedAt} | event=${eventType} | recipient=${recipient} | error=${errorMessage}`);
+      console.error(`[WEBHOOK ERROR] ${receivedAt} | event=${eventType} | recipient=${recipient} | mailgunId=${mailgunId} | error=${errorMessage}`);
       console.error(`[WEBHOOK ERROR STACK] ${errorStack}`);
 
-      // Always return 200 to Mailgun to prevent retries for processing errors
-      return res.status(200).json({
-        message: 'Webhook received but processing failed',
-        error: errorMessage,
+      // The referenced client no longer exists: retrying can never succeed.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        return res.status(200).json({
+          message: 'Webhook received but its client no longer exists',
+        });
+      }
+
+      // Anything else (database unavailable, deploy in progress, ...) may be
+      // temporary. Ask Mailgun to retry: storage is idempotent on the Mailgun
+      // event id, so a retry can never create a duplicate.
+      return res.status(500).json({
+        message: 'Webhook processing failed, please retry',
       });
     }
   }

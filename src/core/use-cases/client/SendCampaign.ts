@@ -235,7 +235,9 @@ export class SendCampaign {
             );
 
             // Update campaign analytics with SENT count for this batch
-            await this.campaignAnalyticsService.incrementMetricBy(campaignId, 'SENT', result.recipients.length);
+            // Recompute cached totals from events (debounced). Absolute recomputes
+            // cannot race with increments and double count.
+            this.campaignAnalyticsService.scheduleRefresh(campaignId);
 
             // Deduct credits immediately for this batch
             if (result.recipientsSent > 0) {
@@ -336,7 +338,7 @@ export class SendCampaign {
           });
 
           // Update campaign analytics with SENT count
-          await this.campaignAnalyticsService.incrementMetricBy(campaignId, 'SENT', 1);
+          this.campaignAnalyticsService.scheduleRefresh(campaignId);
 
           // Deduct credit per email
           await this.clientRepository.update(clientId, { remainingMessages: { decrement: 1 } });

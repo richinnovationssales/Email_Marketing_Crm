@@ -10,7 +10,7 @@
 -- database is exactly as it was before. It is safe to fix the cause and re-run.
 --
 -- While it runs, every query on "EmailEvent" waits, reads included: the
--- ALTER TABLE lock is held until COMMIT. Expect analytics pages to pause for
+-- table lock is held until COMMIT. Expect analytics pages to pause for
 -- the duration (seconds for a few hundred thousand rows). Webhooks that time
 -- out are retried by Mailgun, so none are lost. Run in a quiet period and do
 -- not start a campaign send during the run.
@@ -23,10 +23,15 @@ BEGIN;
 
 -- Give up (and roll back) instead of queueing behind a long-running transaction.
 SET LOCAL lock_timeout = '15s';
+-- Explicit upper bound for each statement, overriding any server/role default
+-- that might be too short for the cleanup. Exceeding it rolls everything back.
+SET LOCAL statement_timeout = '10min';
 
--- Block concurrent INSERT/UPDATE/DELETE on EmailEvent for the duration, so no
--- new duplicate can be written between the cleanup and the unique index.
-LOCK TABLE "EmailEvent" IN SHARE ROW EXCLUSIVE MODE;
+-- Take the strongest lock up front. ALTER TABLE needs it anyway, and taking it
+-- first (rather than upgrading from a weaker lock later) avoids lock-upgrade
+-- deadlocks. It also blocks every write, so no new duplicate can appear between
+-- the cleanup and the unique index.
+LOCK TABLE "EmailEvent" IN ACCESS EXCLUSIVE MODE;
 
 \echo '== Row counts before =='
 SELECT COUNT(*) AS rows_before FROM "EmailEvent";

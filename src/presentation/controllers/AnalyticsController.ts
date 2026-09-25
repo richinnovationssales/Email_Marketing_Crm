@@ -9,6 +9,16 @@ const analyticsService = new MailgunAnalyticsService();
 const campaignAnalyticsService = new CampaignAnalyticsService();
 const emailEventRepository = new EmailEventRepository();
 
+/** True when the campaign exists and belongs to the given client. */
+async function campaignBelongsToClient(campaignId: string, clientId: string): Promise<boolean> {
+  if (typeof campaignId !== 'string' || !campaignId) return false;
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, clientId },
+    select: { id: true },
+  });
+  return campaign !== null;
+}
+
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -116,6 +126,12 @@ export class AnalyticsController {
 
       if (!clientId) {
         return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      // Tenant isolation: only the owning client may read (and recompute) it.
+      // 404 rather than 403 so other tenants' campaign ids are not confirmed.
+      if (!(await campaignBelongsToClient(id, clientId))) {
+        return res.status(404).json({ error: 'Campaign not found' });
       }
 
       const analytics = await campaignAnalyticsService.getCampaignAnalytics(id);
@@ -325,8 +341,18 @@ export class AnalyticsController {
   async getCampaignTimeline(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const clientId = (req as any).user?.clientId;
 
-      const timeline = await emailEventRepository.getCampaignTimeline(id);
+      if (!clientId) {
+        return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      // Tenant isolation: the timeline lists recipient emails.
+      if (!(await campaignBelongsToClient(id, clientId))) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
+
+      const timeline = await emailEventRepository.getCampaignTimeline(id, clientId);
 
       return res.status(200).json({
         success: true,

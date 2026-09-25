@@ -106,12 +106,24 @@ there is no downtime between steps 3 and 6.
 
 ## Locking and duration
 
-`02_apply_production.sql` holds a lock on `"EmailEvent"` until it commits.
-Queries on that table wait during the run, reads included. Nothing else is
-locked. The run takes roughly seconds per few hundred thousand rows. Preflight
-check 3 shows the table size. If the lock can't be acquired within 15 seconds,
-the script gives up without changing anything. Mailgun retries webhooks that
-time out, so no events are lost.
+`02_apply_production.sql` takes an exclusive lock on `"EmailEvent"` at the start
+and holds it until it commits. Queries on that table wait during the run, reads
+included. Nothing else is locked. The run takes roughly seconds per few hundred
+thousand rows. Preflight check 3 shows the table size.
+
+- If the lock can't be acquired within 15 seconds, the script gives up without
+  changing anything.
+- If any statement runs longer than 10 minutes, everything is rolled back.
+- Mailgun retries webhooks that time out, so no events are lost.
+
+## Deploy pipelines
+
+If your deploy runs `prisma migrate deploy` automatically, complete steps 1 to 5
+**before** that deploy. Otherwise the pipeline would apply this migration itself,
+without the lock and while the app is serving traffic. With the new code, a
+webhook that fails because the migration is missing gets a 500 and Mailgun
+retries it for up to 8 hours, so events are delayed rather than lost. It is still
+better to follow the order above.
 
 ## What will change in the numbers
 
@@ -122,7 +134,8 @@ well below 100%. Tell clients beforehand that earlier figures were inflated.
 
 Legacy note: webhook rows stored before this change have no message id. They
 are matched to their send by campaign, recipient and time, so the two cycles of a
-recurring campaign are kept apart.
+recurring campaign are kept apart. For those older rows only, an open or click
+that arrives after the next cycle was sent is credited to the next cycle.
 
 ## Rollback
 
@@ -143,7 +156,8 @@ Turn off auto-commit and run the following as one script. Then run `COMMIT;`, or
 ```sql
 BEGIN;
 SET LOCAL lock_timeout = '15s';
-LOCK TABLE "EmailEvent" IN SHARE ROW EXCLUSIVE MODE;
+SET LOCAL statement_timeout = '10min';
+LOCK TABLE "EmailEvent" IN ACCESS EXCLUSIVE MODE;
 -- paste the full contents of
 -- prisma/migrations/20260925120000_email_event_idempotency/migration.sql here
 ```
@@ -159,3 +173,7 @@ cycles, sends just before the date window, and a second client. It covered a
 first run, a re-run, the post-deploy re-run, the guard abort, both rollback
 parts, re-apply after rollback, and a run of the Prisma migration on an empty
 database. After the migration, `prisma migrate diff` reports no drift.
+
+The application checks ran with the database session in Asia/Dubai and in
+UTC+5 time, as well as UTC. Date windows are compared in UTC regardless of the
+database time zone.
