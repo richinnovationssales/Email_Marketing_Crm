@@ -309,11 +309,15 @@ export class EmailEventRepository {
    * A webhook row is matched to exactly one send:
    *   1. by messageId + recipient + client, when a SENT row with that messageId
    *      exists (normal case after the idempotency migration), otherwise
-   *   2. by campaign + recipient + client, limited to the time between this send
-   *      and the next send of the same campaign to the same recipient, so
-   *      recurring-campaign cycles are kept apart. This covers legacy rows with
-   *      no messageId and any event whose messageId matches no recorded send.
+   *   2. by campaign + recipient + client to the latest send made no later than
+   *      10 minutes after the event, so recurring-campaign cycles are kept apart.
+   *      This covers legacy rows with no messageId and any event whose messageId
+   *      matches no recorded send.
    *   An event that matches rule 1 is never considered for rule 2.
+   *
+   * Cost is linear in the rows scanned (plus sorting): rule 2 is resolved by one
+   * ordered pass over a stream of sends and unmatched events instead of pairing
+   * every send with every event of the same recipient.
    *
    * SENT rows without a messageId (Nodemailer fallback) are each their own send.
    * All date parameters are compared as UTC, independent of the DB session time zone.
@@ -328,13 +332,30 @@ export class EmailEventRepository {
     // zone. Pass an ISO string and convert to UTC explicitly instead.
     const utc = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 
-    const sendScope: Prisma.Sql[] = [Prisma.sql`"eventType" = 'SENT'`];
-    if (scope.clientId) sendScope.push(Prisma.sql`"clientId" = ${scope.clientId}`);
-    if (scope.campaignId) sendScope.push(Prisma.sql`"campaignId" = ${scope.campaignId}`);
-    // Earlier sends are never needed: next_sent_at only looks forward in time.
-    // The upper bound cannot be pushed down, because the next send after the
-    // window is what closes a send's fallback matching interval.
-    if (scope.sentFrom) sendScope.push(Prisma.sql`"timestamp" >= ${utc(scope.sentFrom)}`);
+    const scopeFilter = (alias: string): Prisma.Sql[] => {
+      const a = Prisma.raw(alias);
+      const f: Prisma.Sql[] = [];
+      if (scope.clientId) f.push(Prisma.sql`${a}."clientId" = ${scope.clientId}`);
+      if (scope.campaignId) f.push(Prisma.sql`${a}."campaignId" = ${scope.campaignId}`);
+      return f;
+    };
+
+    const sendScope: Prisma.Sql[] = [Prisma.sql`x."eventType" = 'SENT'`, ...scopeFilter('x')];
+    // Earlier sends are never needed: an event is assigned to a send at or before it.
+    // The upper bound cannot be pushed down, because a later send is what ends the
+    // previous send's cycle for rule 2.
+    if (scope.sentFrom) sendScope.push(Prisma.sql`x."timestamp" >= ${utc(scope.sentFrom)}`);
+
+    // Candidates for rule 2. Events more than 10 minutes before the window cannot
+    // belong to any send in it.
+    const eventScope: Prisma.Sql[] = [
+      Prisma.sql`e."eventType" <> 'SENT'`,
+      Prisma.sql`e."campaignId" IS NOT NULL`,
+      ...scopeFilter('e'),
+    ];
+    if (scope.sentFrom) {
+      eventScope.push(Prisma.sql`e."timestamp" >= ${utc(scope.sentFrom)} - INTERVAL '10 minutes'`);
+    }
 
     const windowFilter: Prisma.Sql[] = [Prisma.sql`TRUE`];
     if (scope.sentFrom) windowFilter.push(Prisma.sql`sent_at >= ${utc(scope.sentFrom)}`);
@@ -354,27 +375,19 @@ export class EmailEventRepository {
 
     const rows = await prisma.$queryRaw<Row[]>`
       WITH sends_all AS (
-        SELECT "clientId", "campaignId", "contactEmail", "messageId",
-               MIN("id")        AS send_key,
-               MIN("timestamp") AS sent_at
-        FROM "EmailEvent"
+        SELECT x."clientId", x."campaignId", x."contactEmail", x."messageId",
+               MIN(x."id")        AS send_key,
+               MIN(x."timestamp") AS sent_at
+        FROM "EmailEvent" x
         WHERE ${Prisma.join(sendScope, ' AND ')}
-        GROUP BY "clientId", "campaignId", "contactEmail", "messageId",
-                 CASE WHEN "messageId" IS NULL THEN "id" END
-      ),
-      sends AS (
-        SELECT *,
-          LEAD(sent_at) OVER (
-            PARTITION BY "clientId", "campaignId", "contactEmail"
-            ORDER BY sent_at, send_key
-          ) AS next_sent_at
-        FROM sends_all
+        GROUP BY x."clientId", x."campaignId", x."contactEmail", x."messageId",
+                 CASE WHEN x."messageId" IS NULL THEN x."id" END
       ),
       window_sends AS (
-        SELECT * FROM sends WHERE ${Prisma.join(windowFilter, ' AND ')}
+        SELECT * FROM sends_all WHERE ${Prisma.join(windowFilter, ' AND ')}
       ),
-      matched AS (
-        -- Rule 1: exact message id
+      -- Rule 1: exact message id
+      rule1 AS (
         SELECT w.send_key, e."eventType", e."severity"
         FROM window_sends w
         JOIN "EmailEvent" e
@@ -383,26 +396,70 @@ export class EmailEventRepository {
          AND e."clientId"     = w."clientId"
         WHERE w."messageId" IS NOT NULL
           AND e."eventType" <> 'SENT'
-        UNION ALL
-        -- Rule 2: same campaign + recipient within this send's cycle, only for
-        -- events whose message id matches no recorded send
-        SELECT w.send_key, e."eventType", e."severity"
-        FROM window_sends w
-        JOIN "EmailEvent" e
-          ON e."campaignId"   = w."campaignId"
-         AND e."contactEmail" = w."contactEmail"
-         AND e."clientId"     = w."clientId"
-        WHERE e."eventType" <> 'SENT'
-          AND e."messageId" IS DISTINCT FROM w."messageId"
-          AND e."timestamp" >= w.sent_at - INTERVAL '10 minutes'
-          AND (w.next_sent_at IS NULL OR e."timestamp" < w.next_sent_at - INTERVAL '10 minutes')
-          AND NOT EXISTS (
-            SELECT 1 FROM "EmailEvent" s
-            WHERE s."eventType"    = 'SENT'
-              AND s."messageId"    = e."messageId"
-              AND s."contactEmail" = e."contactEmail"
-              AND s."clientId"     = e."clientId"
+      ),
+      -- Rule 2 candidates: events whose message id matches no recorded send
+      unmatched AS (
+        SELECT e."clientId", e."campaignId", e."contactEmail", e."timestamp",
+               e."eventType", e."severity"
+        FROM "EmailEvent" e
+        WHERE ${Prisma.join(eventScope, ' AND ')}
+          AND (
+            e."messageId" IS NULL
+            OR NOT EXISTS (
+              SELECT 1 FROM "EmailEvent" s
+              WHERE s."eventType"    = 'SENT'
+                AND s."messageId"    = e."messageId"
+                AND s."contactEmail" = e."contactEmail"
+                AND s."clientId"     = e."clientId"
+            )
           )
+      ),
+      ordered_sends AS (
+        SELECT send_key, "clientId", "campaignId", "contactEmail", sent_at,
+               ROW_NUMBER() OVER (
+                 PARTITION BY "clientId", "campaignId", "contactEmail"
+                 ORDER BY sent_at, send_key
+               ) AS ord
+        FROM sends_all
+        WHERE "campaignId" IS NOT NULL
+      ),
+      -- One time-ordered stream per recipient. A send opens its cycle 10 minutes
+      -- before its send time; sends sort before events at the same instant.
+      -- Each send carries a tag "<zero-padded ord><send_key>": within a recipient,
+      -- the greatest tag so far is the latest send, so a running MAX hands every
+      -- event its send key directly (no join back on the ordinal).
+      stream AS (
+        SELECT "clientId", "campaignId", "contactEmail",
+               sent_at - INTERVAL '10 minutes' AS t, 0 AS kind,
+               (lpad(ord::text, 20, '0') || send_key) COLLATE "C" AS tag,
+               NULL::"EmailEventType" AS "eventType", NULL::text AS "severity"
+        FROM ordered_sends
+        UNION ALL
+        SELECT "clientId", "campaignId", "contactEmail",
+               "timestamp" AS t, 1 AS kind, NULL::text COLLATE "C" AS tag,
+               "eventType", "severity"
+        FROM unmatched
+      ),
+      carried AS (
+        SELECT kind, "eventType", "severity",
+               MAX(tag) OVER (
+                 PARTITION BY "clientId", "campaignId", "contactEmail"
+                 ORDER BY t, kind
+                 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+               ) AS assigned_tag
+        FROM stream
+      ),
+      rule2 AS (
+        SELECT w.send_key, c."eventType", c."severity"
+        FROM carried c
+        JOIN window_sends w ON w.send_key = substr(c.assigned_tag, 21)
+        WHERE c.kind = 1
+          AND c.assigned_tag IS NOT NULL
+      ),
+      matched AS (
+        SELECT * FROM rule1
+        UNION ALL
+        SELECT * FROM rule2
       ),
       per_send AS (
         SELECT
