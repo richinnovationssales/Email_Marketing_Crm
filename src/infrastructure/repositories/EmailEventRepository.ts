@@ -309,17 +309,23 @@ export class EmailEventRepository {
    * A webhook row is matched to exactly one send:
    *   1. by messageId + recipient + client, when a SENT row with that messageId
    *      exists (normal case after the idempotency migration), otherwise
-   *   2. by campaign + recipient + client to the latest send made no later than
-   *      10 minutes after the event, so recurring-campaign cycles are kept apart.
-   *      This covers legacy rows with no messageId and any event whose messageId
-   *      matches no recorded send.
+   *   2. by campaign + recipient + client to the latest send whose cycle has
+   *      started. A cycle starts LEGACY_SLACK (6 h) before the send's recorded
+   *      time, or halfway to the previous send if that is closer. The slack is
+   *      needed because, before per-batch timestamps, every SENT row of a campaign
+   *      was stamped when its LAST batch went out (batches are 30 s apart), so
+   *      early batches' events precede their SENT row by up to the whole send.
+   *      Rule 2 covers legacy rows with no messageId and any event whose
+   *      messageId matches no recorded send.
    *   An event that matches rule 1 is never considered for rule 2.
    *
-   * Cost is linear in the rows scanned (plus sorting): rule 2 is resolved by one
-   * ordered pass over a stream of sends and unmatched events instead of pairing
-   * every send with every event of the same recipient.
-   *
+   * Recipients are compared case-insensitively (Mailgun may report a recipient in
+   * a different case than the contact was stored with). Sends and events of a
+   * deleted campaign (campaignId set to NULL) are matched among themselves.
    * SENT rows without a messageId (Nodemailer fallback) are each their own send.
+   *
+   * Cost is linear in the rows scanned (plus sorting): rule 2 is resolved by one
+   * ordered pass over a stream of sends and unmatched events.
    * All date parameters are compared as UTC, independent of the DB session time zone.
    */
   async getSendOutcomeCounts(scope: SendOutcomeScope): Promise<SendOutcomeCounts> {
@@ -341,20 +347,19 @@ export class EmailEventRepository {
     };
 
     const sendScope: Prisma.Sql[] = [Prisma.sql`x."eventType" = 'SENT'`, ...scopeFilter('x')];
-    // Earlier sends are never needed: an event is assigned to a send at or before it.
-    // The upper bound cannot be pushed down, because a later send is what ends the
-    // previous send's cycle for rule 2.
-    if (scope.sentFrom) sendScope.push(Prisma.sql`x."timestamp" >= ${utc(scope.sentFrom)}`);
-
-    // Candidates for rule 2. Events more than 10 minutes before the window cannot
-    // belong to any send in it.
-    const eventScope: Prisma.Sql[] = [
-      Prisma.sql`e."eventType" <> 'SENT'`,
-      Prisma.sql`e."campaignId" IS NOT NULL`,
-      ...scopeFilter('e'),
-    ];
+    // Sends up to 12 h before the window are kept: a cycle's start depends on the
+    // previous send only when it is less than 2 x LEGACY_SLACK away. Earlier sends
+    // cannot change any in-window assignment. The upper bound cannot be pushed
+    // down, because a later send is what ends the previous send's cycle.
     if (scope.sentFrom) {
-      eventScope.push(Prisma.sql`e."timestamp" >= ${utc(scope.sentFrom)} - INTERVAL '10 minutes'`);
+      sendScope.push(Prisma.sql`x."timestamp" >= ${utc(scope.sentFrom)} - INTERVAL '12 hours'`);
+    }
+
+    // Candidates for rule 2. An in-window send's cycle starts at most
+    // LEGACY_SLACK before the window, so earlier events cannot belong to it.
+    const eventScope: Prisma.Sql[] = [Prisma.sql`e."eventType" <> 'SENT'`, ...scopeFilter('e')];
+    if (scope.sentFrom) {
+      eventScope.push(Prisma.sql`e."timestamp" >= ${utc(scope.sentFrom)} - INTERVAL '6 hours'`);
     }
 
     const windowFilter: Prisma.Sql[] = [Prisma.sql`TRUE`];
@@ -375,9 +380,12 @@ export class EmailEventRepository {
 
     const rows = await prisma.$queryRaw<Row[]>`
       WITH sends_all AS (
-        SELECT x."clientId", x."campaignId", x."contactEmail", x."messageId",
-               MIN(x."id")        AS send_key,
-               MIN(x."timestamp") AS sent_at
+        SELECT x."clientId",
+               COALESCE(x."campaignId", '')  AS camp_key,
+               lower(x."contactEmail")       AS email_key,
+               x."messageId",
+               MIN(x."id")                   AS send_key,
+               MIN(x."timestamp")            AS sent_at
         FROM "EmailEvent" x
         WHERE ${Prisma.join(sendScope, ' AND ')}
         GROUP BY x."clientId", x."campaignId", x."contactEmail", x."messageId",
@@ -391,51 +399,53 @@ export class EmailEventRepository {
         SELECT w.send_key, e."eventType", e."severity"
         FROM window_sends w
         JOIN "EmailEvent" e
-          ON e."messageId"    = w."messageId"
-         AND e."contactEmail" = w."contactEmail"
-         AND e."clientId"     = w."clientId"
+          ON e."messageId"           = w."messageId"
+         AND lower(e."contactEmail") = w.email_key
+         AND e."clientId"            = w."clientId"
         WHERE w."messageId" IS NOT NULL
           AND e."eventType" <> 'SENT'
       ),
       -- Rule 2 candidates: events whose message id matches no recorded send
       unmatched AS (
-        SELECT e."clientId", e."campaignId", e."contactEmail", e."timestamp",
-               e."eventType", e."severity"
+        SELECT e."clientId",
+               COALESCE(e."campaignId", '') AS camp_key,
+               lower(e."contactEmail")      AS email_key,
+               e."timestamp", e."eventType", e."severity"
         FROM "EmailEvent" e
         WHERE ${Prisma.join(eventScope, ' AND ')}
           AND (
             e."messageId" IS NULL
             OR NOT EXISTS (
               SELECT 1 FROM "EmailEvent" s
-              WHERE s."eventType"    = 'SENT'
-                AND s."messageId"    = e."messageId"
-                AND s."contactEmail" = e."contactEmail"
-                AND s."clientId"     = e."clientId"
+              WHERE s."eventType"           = 'SENT'
+                AND s."messageId"           = e."messageId"
+                AND lower(s."contactEmail") = lower(e."contactEmail")
+                AND s."clientId"            = e."clientId"
             )
           )
       ),
       ordered_sends AS (
-        SELECT send_key, "clientId", "campaignId", "contactEmail", sent_at,
-               ROW_NUMBER() OVER (
-                 PARTITION BY "clientId", "campaignId", "contactEmail"
-                 ORDER BY sent_at, send_key
-               ) AS ord
+        SELECT send_key, "clientId", camp_key, email_key, sent_at,
+               ROW_NUMBER() OVER w AS ord,
+               LAG(sent_at) OVER w AS prev_sent_at
         FROM sends_all
-        WHERE "campaignId" IS NOT NULL
+        WINDOW w AS (PARTITION BY "clientId", camp_key, email_key ORDER BY sent_at, send_key)
       ),
-      -- One time-ordered stream per recipient. A send opens its cycle 10 minutes
-      -- before its send time; sends sort before events at the same instant.
-      -- Each send carries a tag "<zero-padded ord><send_key>": within a recipient,
-      -- the greatest tag so far is the latest send, so a running MAX hands every
-      -- event its send key directly (no join back on the ordinal).
+      -- One time-ordered stream per recipient. A send's cycle starts LEGACY_SLACK
+      -- before its recorded time, or halfway to the previous send if closer; sends
+      -- sort before events at the same instant. Each send carries a tag
+      -- "<zero-padded ord><send_key>": the greatest tag so far is the latest send
+      -- whose cycle has started, so a running MAX hands each event its send key.
       stream AS (
-        SELECT "clientId", "campaignId", "contactEmail",
-               sent_at - INTERVAL '10 minutes' AS t, 0 AS kind,
+        SELECT "clientId", camp_key, email_key,
+               sent_at - LEAST(INTERVAL '6 hours',
+                               COALESCE((sent_at - prev_sent_at) / 2, INTERVAL '6 hours')) AS t,
+               0 AS kind,
                (lpad(ord::text, 20, '0') || send_key) COLLATE "C" AS tag,
                NULL::"EmailEventType" AS "eventType", NULL::text AS "severity"
         FROM ordered_sends
         UNION ALL
-        SELECT "clientId", "campaignId", "contactEmail",
+        SELECT "clientId", camp_key, email_key,
                "timestamp" AS t, 1 AS kind, NULL::text COLLATE "C" AS tag,
                "eventType", "severity"
         FROM unmatched
@@ -443,7 +453,7 @@ export class EmailEventRepository {
       carried AS (
         SELECT kind, "eventType", "severity",
                MAX(tag) OVER (
-                 PARTITION BY "clientId", "campaignId", "contactEmail"
+                 PARTITION BY "clientId", camp_key, email_key
                  ORDER BY t, kind
                  ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
                ) AS assigned_tag

@@ -55,6 +55,8 @@ export interface CampaignSendResult {
   recipientsSent: number;
   recipients: string[];
   errors?: Array<{ recipient: string; error: string }>;
+  /** When Mailgun accepted this batch (batches are sent 30 s apart) */
+  sentAt?: Date;
 }
 
 export class MailgunService {
@@ -233,6 +235,7 @@ export class MailgunService {
             status: 'success',
             recipientsSent: batch.length,
             recipients: [...batch],
+            sentAt: new Date(),
           });
           console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
         }

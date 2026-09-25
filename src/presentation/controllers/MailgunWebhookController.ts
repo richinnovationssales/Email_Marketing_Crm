@@ -61,16 +61,16 @@ export class MailgunWebhookController {
       console.error(`[WEBHOOK ERROR] ${receivedAt} | event=${eventType} | recipient=${recipient} | mailgunId=${mailgunId} | error=${errorMessage}`);
       console.error(`[WEBHOOK ERROR STACK] ${errorStack}`);
 
-      // The referenced client no longer exists: retrying can never succeed.
+      // The referenced client or campaign no longer exists: retrying can never succeed.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
         return res.status(200).json({
-          message: 'Webhook received but its client no longer exists',
+          message: 'Webhook received but the referenced record no longer exists',
         });
       }
 
-      // Anything else (database unavailable, deploy in progress, ...) may be
-      // temporary. Ask Mailgun to retry: storage is idempotent on the Mailgun
-      // event id, so a retry can never create a duplicate.
+      // Anything else (database unavailable, table locked by a migration, ...) may
+      // be temporary. Ask Mailgun to retry instead of dropping the event. A retry
+      // of an event that was already stored is skipped by the duplicate check.
       return res.status(500).json({
         message: 'Webhook processing failed, please retry',
       });

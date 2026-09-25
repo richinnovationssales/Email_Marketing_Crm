@@ -11,9 +11,10 @@
 --
 -- While it runs, every query on "EmailEvent" waits, reads included: the
 -- table lock is held until COMMIT. Expect analytics pages to pause for
--- the duration (seconds for a few hundred thousand rows). Webhooks that time
--- out are retried by Mailgun, so none are lost. Run in a quiet period and do
--- not start a campaign send during the run.
+-- the duration (seconds for a few hundred thousand rows). Webhooks that fail
+-- during the run are retried by Mailgun ONLY if branch fix/webhook-retry-on-error
+-- is already deployed (runbook step 0); otherwise some can be lost. Run in a
+-- quiet period and do not start a campaign send during the run.
 -- =============================================================================
 
 \set ON_ERROR_STOP on

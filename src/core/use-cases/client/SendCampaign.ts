@@ -231,6 +231,9 @@ export class SendCampaign {
                 mailgunId: result.messageId || undefined,
                 // Canonical id that webhook events carry; links outcomes to this send
                 messageId: normalizeMessageId(result.messageId),
+                // This batch's own send time. All batches are recorded only after
+                // the last one goes out (30 s apart), so "now" would be too late.
+                timestamp: result.sentAt,
               }))
             );
 

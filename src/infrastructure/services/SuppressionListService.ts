@@ -46,7 +46,7 @@ export class SuppressionListService {
   async isEmailSuppressed(email: string, clientId: string): Promise<boolean> {
     const count = await prisma.suppressionList.count({
       where: {
-        email,
+        email: { equals: email, mode: 'insensitive' },
         clientId,
       },
     });
@@ -62,7 +62,7 @@ export class SuppressionListService {
     type: SuppressionType
   ): Promise<boolean> {
     const count = await prisma.suppressionList.count({
-      where: { email, clientId, type },
+      where: { email: { equals: email, mode: 'insensitive' }, clientId, type },
     });
     return count > 0;
   }
@@ -76,14 +76,14 @@ export class SuppressionListService {
     const suppressedSet = new Set<string>();
 
     for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-      const batch = emails.slice(i, i + BATCH_SIZE);
-      const suppressedEmails = await prisma.suppressionList.findMany({
-        where: {
-          email: { in: batch },
-          clientId,
-        },
-        select: { email: true },
-      });
+      // Case-insensitive: Mailgun may report a recipient in a different case than
+      // the contact was stored with, so "John@X.com" must match "john@x.com".
+      const batch = emails.slice(i, i + BATCH_SIZE).map((e) => e.toLowerCase());
+      const suppressedEmails = await prisma.$queryRaw<{ email: string }[]>`
+        SELECT "email" FROM "SuppressionList"
+        WHERE "clientId" = ${clientId}
+          AND lower("email") = ANY(${batch}::text[])
+      `;
       for (const s of suppressedEmails) {
         suppressedSet.add(s.email.toLowerCase());
       }

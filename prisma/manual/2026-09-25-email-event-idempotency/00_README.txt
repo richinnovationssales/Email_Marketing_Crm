@@ -36,6 +36,13 @@ The order matters. The new backend code reads the new columns, so it must be
 deployed **after** step 3. The old code works fine with the new columns, so
 there is no downtime between steps 3 and 6.
 
+0. **Deploy branch `fix/webhook-retry-on-error` first, on its own.** It changes
+   only the webhook handler and works with the current schema. The current
+   handler answers every error with 200, so a webhook that fails while step 3
+   holds the table lock (for example a connection-pool timeout) is never
+   retried by Mailgun and is lost. With this change it gets a 500 and Mailgun
+   retries it for up to 8 hours. Do not start step 3 until this is live.
+
 1. **Back up the database.**
    ```bash
    pg_dump "$DATABASE_URL" -Fc -f before_email_event_idempotency.dump
@@ -114,7 +121,9 @@ thousand rows. Preflight check 3 shows the table size.
 - If the lock can't be acquired within 15 seconds, the script gives up without
   changing anything.
 - If any statement runs longer than 10 minutes, everything is rolled back.
-- Mailgun retries webhooks that time out, so no events are lost.
+- Webhooks that time out or fail during the run are retried by Mailgun, so no
+  events are lost, provided step 0 is live. Without step 0, a webhook that
+  fails with a connection-pool timeout gets a 200 and is lost.
 
 ## Deploy pipelines
 
@@ -133,9 +142,19 @@ delivery rate will settle near the real value, and the bounce rate falls
 well below 100%. Tell clients beforehand that earlier figures were inflated.
 
 Legacy note: webhook rows stored before this change have no message id. They
-are matched to their send by campaign, recipient and time, so the two cycles of a
-recurring campaign are kept apart. For those older rows only, an open or click
-that arrives after the next cycle was sent is credited to the next cycle.
+are matched to their send by campaign, recipient and time. Before this change,
+every sent row of a campaign was stamped when its last batch went out, so a
+send's cycle is taken to start 6 hours before its recorded time, or halfway to
+the previous send of the same campaign if that is closer. This keeps early
+batches of large campaigns and the cycles of recurring campaigns apart. For
+those older rows only, an open or click that arrives within that lead-in before
+the next cycle is credited to the next cycle. New sends are stamped per batch
+and new events are matched exactly by message id.
+
+Recipient addresses are compared case-insensitively, both when matching events
+to sends and when excluding suppressed contacts from a send. A contact stored as
+"John@X.com" is now excluded if "john@x.com" bounced, complained or
+unsubscribed. Previously such contacts could still be emailed.
 
 ## Rollback
 
