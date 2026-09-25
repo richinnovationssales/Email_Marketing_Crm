@@ -9,6 +9,32 @@ const analyticsService = new MailgunAnalyticsService();
 const campaignAnalyticsService = new CampaignAnalyticsService();
 const emailEventRepository = new EmailEventRepository();
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Parse a date-range boundary from the query string.
+ *
+ * - Full timestamps (e.g. "2026-09-20T20:00:00.000Z", sent by the frontend for
+ *   the viewer's local midnight) are used as-is.
+ * - Date-only values ("2026-09-21") are read as UTC midnight. For the end
+ *   boundary the whole day is included, so it becomes the next UTC midnight.
+ *
+ * The returned end is always exclusive. Returns null for an invalid value.
+ */
+function parseRangeBoundary(raw: unknown, kind: 'start' | 'end'): Date | undefined | null {
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  if (typeof raw !== 'string') return null;
+
+  const value = raw.trim();
+  const date = new Date(DATE_ONLY.test(value) ? `${value}T00:00:00.000Z` : value);
+  if (isNaN(date.getTime())) return null;
+
+  if (kind === 'end' && DATE_ONLY.test(value)) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date;
+}
+
 export class AnalyticsController {
   /**
    * Get analytics overview for current client
@@ -22,13 +48,16 @@ export class AnalyticsController {
         return res.status(401).json({ error: 'Client ID not found in token' });
       }
 
-      // Parse optional date filters
-      const startDate = req.query.startDate
-        ? new Date(req.query.startDate as string)
-        : undefined;
-      const endDate = req.query.endDate
-        ? new Date(req.query.endDate as string)
-        : undefined;
+      // Parse optional date filters: [startDate, endDate) on send time
+      const startDate = parseRangeBoundary(req.query.startDate, 'start');
+      const endDate = parseRangeBoundary(req.query.endDate, 'end');
+
+      if (startDate === null || endDate === null) {
+        return res.status(400).json({ error: 'Invalid startDate or endDate' });
+      }
+      if (startDate && endDate && startDate >= endDate) {
+        return res.status(400).json({ error: 'startDate must be before endDate' });
+      }
 
       const overview = await analyticsService.getClientAnalyticsOverview(
         clientId,

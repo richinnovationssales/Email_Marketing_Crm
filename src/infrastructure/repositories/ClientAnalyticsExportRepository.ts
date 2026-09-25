@@ -1,4 +1,7 @@
 import prisma from '../../infrastructure/database/prisma';
+import { EmailEventRepository } from './EmailEventRepository';
+
+const emailEventRepository = new EmailEventRepository();
 
 export interface DateRangeFilter {
   rangeType: 'monthly' | 'yearly' | 'custom';
@@ -108,46 +111,20 @@ export class ClientAnalyticsExportRepository {
       where: { clientId, createdAt: { gte: startDate, lte: endDate } },
     });
 
-    // Email event aggregates
-    const eventCounts = await prisma.emailEvent.groupBy({
-      by: ['eventType'],
-      where: {
-        clientId,
-        timestamp: { gte: startDate, lte: endDate },
-      },
-      _count: { eventType: true },
+    // Email outcomes for sends in the range (same logic as the analytics overview).
+    // endDate here is inclusive (end of day), the counter takes an exclusive bound.
+    const counts = await emailEventRepository.getSendOutcomeCounts({
+      clientId,
+      sentFrom: startDate,
+      sentBefore: new Date(endDate.getTime() + 1),
     });
 
-    let totalEmailsSent = 0;
-    let totalDelivered = 0;
-    let totalOpened = 0;
-    let totalClicked = 0;
-    let totalBounced = 0;
-    let totalComplaints = 0;
-
-    for (const item of eventCounts) {
-      switch (item.eventType) {
-        case 'SENT':
-          totalEmailsSent = item._count.eventType;
-          break;
-        case 'DELIVERED':
-          totalDelivered = item._count.eventType;
-          break;
-        case 'OPENED':
-          totalOpened = item._count.eventType;
-          break;
-        case 'CLICKED':
-          totalClicked = item._count.eventType;
-          break;
-        case 'BOUNCED':
-        case 'FAILED':
-          totalBounced += item._count.eventType;
-          break;
-        case 'COMPLAINED':
-          totalComplaints = item._count.eventType;
-          break;
-      }
-    }
+    const totalEmailsSent = counts.totalSent;
+    const totalDelivered = counts.totalDelivered;
+    const totalOpened = counts.uniqueOpens;
+    const totalClicked = counts.uniqueClicks;
+    const totalBounced = counts.totalBounced;
+    const totalComplaints = counts.totalComplaints;
 
     // Suppression list for unsubscribes
     const totalUnsubscribed = await prisma.suppressionList.count({

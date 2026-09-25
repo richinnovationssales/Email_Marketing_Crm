@@ -381,6 +381,7 @@ enum EmailEventType {
   COMPLAINED
   OPENED
   CLICKED
+  UNSUBSCRIBED
 }
 
 model EmailEvent {
@@ -392,13 +393,22 @@ model EmailEvent {
   contactEmail String
   eventType    EmailEventType
   timestamp    DateTime       @default(now())
-  mailgunId    String? // Mailgun message ID
+  mailgunId    String? // Legacy: batch message-id on SENT rows, event id on webhook rows
+  // Mailgun webhook event-data.id. Unique so a webhook delivered twice is stored once.
+  // NULL on SENT rows (one batch message covers many recipients).
+  mailgunEventId String? @unique
+  // Normalized Mailgun message-id (no angle brackets). Links webhook events to the SENT row.
+  messageId    String?
+  // Mailgun failure severity for FAILED events: "permanent" | "temporary"
+  severity     String?
   errorMessage String?
   metadata     String? // JSON for additional data
 
   @@index([clientId, eventType])
   @@index([campaignId])
   @@index([timestamp])
+  @@index([messageId, contactEmail])
+  @@index([campaignId, contactEmail])
 }
 
 enum ActivityType {

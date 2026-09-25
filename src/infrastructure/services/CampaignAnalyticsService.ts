@@ -20,11 +20,63 @@ export interface CampaignAnalyticsData {
   bounceRate: number;
 }
 
+/**
+ * Campaigns whose events changed and whose CampaignAnalytics row needs a
+ * recompute. Shared across service instances in this process.
+ */
+const pendingRefresh = new Set<string>();
+let refreshTimer: NodeJS.Timeout | null = null;
+let refreshRunning = false;
+const REFRESH_DELAY_MS = 15_000;
+
 export class CampaignAnalyticsService {
   private emailEventRepository: EmailEventRepository;
 
   constructor() {
     this.emailEventRepository = new EmailEventRepository();
+  }
+
+  /**
+   * Queue a recompute of a campaign's cached analytics from the event table.
+   * Webhooks arrive in bursts of thousands, so recomputes are batched: each
+   * campaign is recomputed at most once per REFRESH_DELAY_MS.
+   */
+  scheduleRefresh(campaignId: string) {
+    pendingRefresh.add(campaignId);
+    if (refreshTimer) return;
+    refreshTimer = setTimeout(() => {
+      refreshTimer = null;
+      void this.flushPendingRefreshes();
+    }, REFRESH_DELAY_MS);
+    refreshTimer.unref?.();
+  }
+
+  private async flushPendingRefreshes() {
+    if (refreshRunning) {
+      // A flush is in progress; try again after the next delay.
+      if (pendingRefresh.size > 0 && !refreshTimer) {
+        refreshTimer = setTimeout(() => {
+          refreshTimer = null;
+          void this.flushPendingRefreshes();
+        }, REFRESH_DELAY_MS);
+        refreshTimer.unref?.();
+      }
+      return;
+    }
+    refreshRunning = true;
+    try {
+      const ids = [...pendingRefresh];
+      pendingRefresh.clear();
+      for (const id of ids) {
+        try {
+          await this.updateAnalyticsFromEvents(id);
+        } catch (error) {
+          console.error(`Failed to refresh analytics for campaign ${id}:`, error);
+        }
+      }
+    } finally {
+      refreshRunning = false;
+    }
   }
 
   /**

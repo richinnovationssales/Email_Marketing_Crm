@@ -10,6 +10,8 @@
     "db:reset": "prisma migrate reset --force --skip-generate",
     "start:prod": "node dist/index.js",
     "create:superadmin": "ts-node scripts/createSuperAdmin.ts",
+    "analytics:recalculate": "ts-node src/scripts/recalculateAllAnalytics.ts",
+    "analytics:recalculate:prod": "node dist/scripts/recalculateAllAnalytics.js",
     "postinstall": "prisma generate && ts-node scripts/createSuperAdmin.ts"
   },
   "keywords": [],

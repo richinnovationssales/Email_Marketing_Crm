@@ -4,7 +4,7 @@ import { ClientRepository } from '../../../infrastructure/repositories/ClientRep
 import { EmailService } from '../../../infrastructure/services/EmailService';
 import { MailgunService, ClientMailgunConfig } from '../../../infrastructure/services/MailgunService';
 import { SuppressionListService } from '../../../infrastructure/services/SuppressionListService';
-import { EmailEventRepository } from '../../../infrastructure/repositories/EmailEventRepository';
+import { EmailEventRepository, normalizeMessageId } from '../../../infrastructure/repositories/EmailEventRepository';
 import { CampaignAnalyticsService } from '../../../infrastructure/services/CampaignAnalyticsService';
 import { CampaignStatus } from '@prisma/client';
 import { personalizeContent, convertPlaceholdersToMailgun, extractPlaceholderKeys, prependGreeting } from '../../utils/personalize';
@@ -229,6 +229,8 @@ export class SendCampaign {
                 contactEmail: email,
                 eventType: 'SENT' as const,
                 mailgunId: result.messageId || undefined,
+                // Canonical id that webhook events carry; links outcomes to this send
+                messageId: normalizeMessageId(result.messageId),
               }))
             );
 

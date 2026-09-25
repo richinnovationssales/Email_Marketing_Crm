@@ -74,45 +74,32 @@ export class MailgunAnalyticsService {
   }
 
   /**
-   * Get analytics overview for a client (from database)
+   * Get analytics overview for a client (from database).
+   *
+   * Counts the emails SENT in [startDate, endDate) and what happened to each
+   * of them, whenever the outcome arrived. Delivered, bounced, opened and
+   * clicked are counted once per send, so none can exceed totalSent.
+   *
+   * @param startDate inclusive lower bound on send time
+   * @param endDate   exclusive upper bound on send time
    */
   async getClientAnalyticsOverview(
     clientId: string,
     startDate?: Date,
     endDate?: Date
   ): Promise<AnalyticsOverview> {
-    const eventCounts = await this.emailEventRepository.countByClient(clientId, startDate, endDate);
+    const counts = await this.emailEventRepository.getSendOutcomeCounts({
+      clientId,
+      sentFrom: startDate,
+      sentBefore: endDate,
+    });
 
-    let totalSent = 0;
-    let totalDelivered = 0;
-    let totalOpened = 0;
-    let totalClicked = 0;
-    let totalBounced = 0;
-    let totalComplaints = 0;
-
-    for (const item of eventCounts) {
-      switch (item.eventType) {
-        case 'SENT':
-          totalSent = item.count;
-          break;
-        case 'DELIVERED':
-          totalDelivered = item.count;
-          break;
-        case 'OPENED':
-          totalOpened = item.count;
-          break;
-        case 'CLICKED':
-          totalClicked = item.count;
-          break;
-        case 'BOUNCED':
-        case 'FAILED':
-          totalBounced += item.count;
-          break;
-        case 'COMPLAINED':
-          totalComplaints = item.count;
-          break;
-      }
-    }
+    const totalSent = counts.totalSent;
+    const totalDelivered = counts.totalDelivered;
+    const totalOpened = counts.uniqueOpens;
+    const totalClicked = counts.uniqueClicks;
+    const totalBounced = counts.totalBounced;
+    const totalComplaints = counts.totalComplaints;
 
     const openRate = totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0;
     const clickRate = totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0;
