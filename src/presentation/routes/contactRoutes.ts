@@ -14,6 +14,7 @@ router.use(checkClientApproval);
 
 router.post('/', contactController.createContact);
 router.post('/upload', upload.single('file'), contactController.bulkUpload);
+router.get('/upload-template', contactController.downloadUploadTemplate);
 router.get('/', contactController.getContacts);
 router.get('/:id', contactController.getContactById);
 router.put('/:id', contactController.updateContact);
