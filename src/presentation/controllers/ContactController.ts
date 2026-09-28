@@ -3,11 +3,13 @@ import { StatusCodes } from 'http-status-codes';
 import { ContactManagement } from '../../core/use-cases/client/ContactManagement';
 import { ContactRepository } from '../../infrastructure/repositories/ContactRepository';
 import { AuthRequest } from '../middlewares/authMiddleware';
-import { BulkContactUpload } from '../../core/use-cases/client/BulkContactUpload';
+import { BulkContactUpload, BulkUploadFileError } from '../../core/use-cases/client/BulkContactUpload';
+import { ContactUploadTemplate } from '../../core/use-cases/client/ContactUploadTemplate';
 
 const contactRepository = new ContactRepository();
 const contactManagementUseCase = new ContactManagement(contactRepository);
 const bulkContactUploadUseCase = new BulkContactUpload(contactRepository);
+const contactUploadTemplate = new ContactUploadTemplate();
 
 export class ContactController {
   async createContact(req: AuthRequest, res: Response): Promise<void> {
@@ -163,39 +165,45 @@ export class ContactController {
       }
 
       const groupId = req.body.groupId; // Extract groupId from form data
-      const result = await bulkContactUploadUseCase.execute(req.file.path, req.user.clientId, req.user.id, groupId);
+      const result = await bulkContactUploadUseCase.execute(
+        req.file.path,
+        req.file.originalname,
+        req.user.clientId,
+        req.user.id,
+        groupId
+      );
       res.status(StatusCodes.OK).json({
+        total: result.total,
         success: result.success,
         failed: result.failed,
-        message: `Bulk upload completed – ${result.success} contacts created, ${result.failed} rows skipped due to validation errors.`
+        message: `Bulk upload completed – ${result.success} contacts created, ${result.failed} rows skipped due to validation errors.`,
+        warnings: result.warnings,
+        errors: result.errors
       });
     } catch (error) {
+      if (error instanceof BulkUploadFileError) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
+        return;
+      }
       console.error('Error uploading contacts:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }
 
-  async searchContacts(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.user?.clientId) {
-      res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
-      return;
+  async downloadUploadTemplate(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+      const workbook = await contactUploadTemplate.generate(req.user.clientId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=contacts-upload-template.xlsx');
+      await workbook.xlsx.write(res);
+      res.end();
+    } catch (error) {
+      console.error('Error generating contact upload template:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
-
-    const query = (req.query.q as string)?.trim();
-    if (!query) {
-      res.status(StatusCodes.BAD_REQUEST).json({ message: 'Search query "q" is required' });
-      return;
-    }
-
-    const cursor = req.query.cursor as string | undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
-
-    const result = await contactManagementUseCase.search(req.user.clientId, query, cursor, limit);
-    res.json(result);
-  } catch (error) {
-    console.error('Error searching contacts:', error);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
   }
-}
 }
