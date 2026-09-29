@@ -23,12 +23,24 @@ export class AnalyticsController {
       }
 
       // Parse optional date filters
-      const startDate = req.query.startDate
-        ? new Date(req.query.startDate as string)
-        : undefined;
-      const endDate = req.query.endDate
-        ? new Date(req.query.endDate as string)
-        : undefined;
+      const rawStart = req.query.startDate as string | undefined;
+      const rawEnd = req.query.endDate as string | undefined;
+      const startDate = rawStart ? new Date(rawStart) : undefined;
+      let endDate = rawEnd ? new Date(rawEnd) : undefined;
+
+      console.log(
+        `[analytics/overview] request client=${clientId} query=${JSON.stringify(req.query)} ` +
+          `parsedStart=${startDate?.toISOString?.() ?? 'invalid/none'} parsedEnd=${endDate?.toISOString?.() ?? 'invalid/none'}`
+      );
+
+      if ((startDate && isNaN(startDate.getTime())) || (endDate && isNaN(endDate.getTime()))) {
+        return res.status(400).json({ error: 'Invalid startDate or endDate' });
+      }
+
+      // A date-only endDate (YYYY-MM-DD) parses to 00:00 UTC; make it inclusive of that whole day
+      if (endDate && rawEnd && /^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) {
+        endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+      }
 
       const overview = await analyticsService.getClientAnalyticsOverview(
         clientId,
