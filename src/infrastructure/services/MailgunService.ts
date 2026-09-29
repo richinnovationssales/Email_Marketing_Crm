@@ -53,6 +53,7 @@ export interface CampaignSendResult {
   messageId: string;
   status: 'success' | 'error';
   recipientsSent: number;
+  recipients: string[];
   errors?: Array<{ recipient: string; error: string }>;
 }
 
@@ -103,6 +104,9 @@ export class MailgunService {
       subject: params.subject,
       html: params.html,
       text: params.text,
+      'o:tracking': 'yes',
+      'o:tracking-opens': 'yes',
+      'o:tracking-clicks': 'yes',
     };
 
     // Add tags if provided
@@ -159,7 +163,6 @@ export class MailgunService {
         }
       }
 
-      // Add tags if provided
       const messageData: MailgunMessageData = {
         from: `${activeFromName} <${activeFromEmail}>`,
         to: batch,
@@ -167,6 +170,9 @@ export class MailgunService {
         html: params.html,
         text: params.text,
         'recipient-variables': JSON.stringify(recipientVars),
+        'o:tracking': 'yes',
+        'o:tracking-opens': 'yes',
+        'o:tracking-clicks': 'yes',
       };
 
       if (params.tags && params.tags.length > 0) {
@@ -226,13 +232,15 @@ export class MailgunService {
             messageId: result.id || '',
             status: 'success',
             recipientsSent: batch.length,
+            recipients: [...batch],
           });
           console.log(`Batch ${i + 1} sent successfully. Message ID: ${result.id}`);
         }
 
-        // Add a small delay between batches
+        // Add delay between batches to avoid rate limiting
         if (i < batches.length - 1) {
-          await this.delay(100); 
+          console.log(`Waiting 30 seconds before next batch...`);
+          await this.delay(30000); // 30 seconds
         }
 
       } catch (error: any) {
@@ -241,6 +249,7 @@ export class MailgunService {
           messageId: '',
           status: 'error',
           recipientsSent: 0,
+          recipients: [...batch],
           errors: batch.map(recipient => ({
             recipient,
             error: error.message || 'Unknown error',

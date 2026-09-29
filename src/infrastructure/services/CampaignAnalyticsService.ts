@@ -45,14 +45,13 @@ export class CampaignAnalyticsService {
   }
 
   /**
-   * Update campaign analytics from event counts
+   * Update campaign analytics from event counts.
+   * Uses a single aggregated DB query instead of 3 separate queries — safe for large event tables.
    */
   async updateAnalyticsFromEvents(campaignId: string): Promise<CampaignAnalyticsData> {
-    const eventCounts = await this.emailEventRepository.countByCampaign(campaignId);
-    const uniqueOpens = await this.emailEventRepository.getUniqueCounts(campaignId, 'OPENED');
-    const uniqueClicks = await this.emailEventRepository.getUniqueCounts(campaignId, 'CLICKED');
-
-    const counts = this.parseEventCounts(eventCounts);
+    // Single query: all counts + unique opens/clicks in one round-trip
+    const counts = await this.emailEventRepository.getAggregatedCounts(campaignId);
+    const { uniqueOpens, uniqueClicks } = counts;
 
     // Calculate rates
     const openRate = counts.totalDelivered > 0
@@ -116,30 +115,39 @@ export class CampaignAnalyticsService {
   }
 
   /**
-   * Increment a specific metric
+   * Increment a specific metric by a given count (for bulk operations like campaign sending)
    */
-  async incrementMetric(campaignId: string, eventType: EmailEventType) {
+  async incrementMetricBy(campaignId: string, eventType: EmailEventType, count: number) {
+    if (count <= 0) return;
+
     const updateData: Record<string, { increment: number }> = {};
+    const createData: Record<string, number> = {};
 
     switch (eventType) {
       case 'SENT':
-        updateData.totalSent = { increment: 1 };
+        updateData.totalSent = { increment: count };
+        createData.totalSent = count;
         break;
       case 'DELIVERED':
-        updateData.totalDelivered = { increment: 1 };
+        updateData.totalDelivered = { increment: count };
+        createData.totalDelivered = count;
         break;
       case 'OPENED':
-        updateData.totalOpened = { increment: 1 };
+        updateData.totalOpened = { increment: count };
+        createData.totalOpened = count;
         break;
       case 'CLICKED':
-        updateData.totalClicked = { increment: 1 };
+        updateData.totalClicked = { increment: count };
+        createData.totalClicked = count;
         break;
       case 'BOUNCED':
       case 'FAILED':
-        updateData.totalBounced = { increment: 1 };
+        updateData.totalBounced = { increment: count };
+        createData.totalBounced = count;
         break;
       case 'COMPLAINED':
-        updateData.totalComplaints = { increment: 1 };
+        updateData.totalComplaints = { increment: count };
+        createData.totalComplaints = count;
         break;
     }
 
@@ -149,12 +157,60 @@ export class CampaignAnalyticsService {
         update: updateData,
         create: {
           campaignId,
-          ...(eventType === 'SENT' ? { totalSent: 1 } : {}),
-          ...(eventType === 'DELIVERED' ? { totalDelivered: 1 } : {}),
-          ...(eventType === 'OPENED' ? { totalOpened: 1 } : {}),
-          ...(eventType === 'CLICKED' ? { totalClicked: 1 } : {}),
-          ...(eventType === 'BOUNCED' || eventType === 'FAILED' ? { totalBounced: 1 } : {}),
-          ...(eventType === 'COMPLAINED' ? { totalComplaints: 1 } : {}),
+          ...createData,
+        },
+      });
+    }
+  }
+
+  /**
+   * Increment a specific metric
+   * @param originalMailgunEvent - the raw Mailgun event name, used to distinguish unsubscribes from complaints
+   */
+  async incrementMetric(campaignId: string, eventType: EmailEventType, originalMailgunEvent?: string) {
+    const updateData: Record<string, { increment: number }> = {};
+    const createData: Record<string, number> = {};
+
+    switch (eventType) {
+      case 'SENT':
+        updateData.totalSent = { increment: 1 };
+        createData.totalSent = 1;
+        break;
+      case 'DELIVERED':
+        updateData.totalDelivered = { increment: 1 };
+        createData.totalDelivered = 1;
+        break;
+      case 'OPENED':
+        updateData.totalOpened = { increment: 1 };
+        createData.totalOpened = 1;
+        break;
+      case 'CLICKED':
+        updateData.totalClicked = { increment: 1 };
+        createData.totalClicked = 1;
+        break;
+      case 'BOUNCED':
+      case 'FAILED':
+        updateData.totalBounced = { increment: 1 };
+        createData.totalBounced = 1;
+        break;
+      case 'COMPLAINED':
+        if (originalMailgunEvent === 'unsubscribed') {
+          updateData.totalUnsubscribed = { increment: 1 };
+          createData.totalUnsubscribed = 1;
+        } else {
+          updateData.totalComplaints = { increment: 1 };
+          createData.totalComplaints = 1;
+        }
+        break;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      await prisma.campaignAnalytics.upsert({
+        where: { campaignId },
+        update: updateData,
+        create: {
+          campaignId,
+          ...createData,
         },
       });
     }
@@ -200,7 +256,15 @@ export class CampaignAnalyticsService {
    */
   async getClientCampaignsAnalytics(clientId: string) {
     const campaigns = await prisma.campaign.findMany({
-      where: { clientId, status: 'SENT' },
+      where: {
+        clientId,
+        OR: [
+          { status: 'SENT' },
+          // Include recurring campaigns that have been sent at least once
+          // (they stay in APPROVED status after each send)
+          { isRecurring: true, sentAt: { not: null } },
+        ],
+      },
       include: { analytics: true },
       orderBy: { sentAt: 'desc' },
     });

@@ -12,7 +12,7 @@ export class ContactRepository {
     data: CreateContactInput,
     clientId: string,
     userId: string,
-    groupId?: string
+    groupId?: string,
   ): Promise<Contact> {
     // Create transaction to handle both contact and custom fields
     return await prisma.$transaction(async (tx) => {
@@ -53,7 +53,7 @@ export class ContactRepository {
         await Promise.all(
           Object.entries(customFields).map(async ([customFieldId, value]) => {
             const fieldDef = clientCustomFields.find(
-              (f) => f.id === customFieldId
+              (f) => f.id === customFieldId,
             );
 
             const createdValue = await tx.contactCustomFieldValue.create({
@@ -68,7 +68,7 @@ export class ContactRepository {
             if (fieldDef?.isNameField) {
               identityValueId = createdValue.id;
             }
-          })
+          }),
         );
       }
 
@@ -115,7 +115,7 @@ export class ContactRepository {
   async findAll(
     clientId: string,
     cursor?: string,
-    limit: number = 20
+    limit: number = 20,
   ): Promise<{ data: Contact[]; nextCursor: string | null }> {
     const contacts = await prisma.contact.findMany({
       where: { clientId },
@@ -135,22 +135,99 @@ export class ContactRepository {
             updatedAt: true,
           },
         },
-        customFieldValues: {
+        // customFieldValues: {
+        //   select: {
+        //     id: true,
+        //     customFieldId: true,
+        //     value: true,
+        //     contactId: true,
+        //   },
+        // },
+        contactGroups: {
           select: {
-            id: true,
-            customFieldId: true,
-            value: true,
-            contactId: true,
+            group: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
     });
 
     const hasMore = contacts.length > limit;
-    const data = hasMore ? contacts.slice(0, limit) : contacts;
+    const data = (hasMore ? contacts.slice(0, limit) : contacts).map(
+      ({ contactGroups, ...rest }) => ({
+        ...rest,
+        groupName:
+          contactGroups.length > 0
+            ? contactGroups.map((cg) => cg.group.name).join(", ")
+            : null,
+      }),
+    );
     const nextCursor = hasMore ? data[data.length - 1].id : null;
 
     return { data, nextCursor };
+  }
+
+  async search(
+    clientId: string,
+    query: string,
+    cursor?: string,
+    limit: number = 20,
+  ): Promise<{ data: Contact[]; nextCursor: string | null }> {
+    const contacts = await prisma.contact.findMany({
+      where: {
+        clientId,
+        OR: [
+          { email: { contains: query, mode: "insensitive" } },
+          {
+            customFieldValues: {
+              some: {
+                value: { contains: query, mode: "insensitive" },
+              },
+            },
+          },
+        ],
+      },
+      take: limit + 1,
+      ...(cursor && { cursor: { id: cursor }, skip: 1 }),
+      orderBy: { createdAt: "desc" },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            email: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        contactGroups: {
+          // ← was missing
+          select: {
+            group: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+    });
+
+    const hasMore = contacts.length > limit;
+    const data = (hasMore ? contacts.slice(0, limit) : contacts).map(
+      ({ contactGroups, ...rest }) => ({
+        ...rest,
+        groupName:
+          contactGroups.length > 0
+            ? contactGroups
+                .map((cg: { group: { name: string } }) => cg.group.name)
+                .join(", ")
+            : null,
+      }),
+    );
+
+    return { data, nextCursor: hasMore ? data[data.length - 1].id : null };
   }
 
   async findById(id: string, clientId: string): Promise<Contact | null> {
@@ -177,28 +254,58 @@ export class ContactRepository {
 
   async update(
     id: string,
-    data: Partial<Contact>,
-    clientId: string
+    data: {
+      email?: string;
+      customFields?: Record<string, any>;
+      groupId?: string;
+    },
+    clientId: string,
   ): Promise<Contact | null> {
-    const { customFields, ...contactData } = data;
+    const { customFields, groupId, ...contactData } = data;
 
-    // First, verify the contact belongs to the client
+    // Ensure contact belongs to client
     const existingContact = await prisma.contact.findFirst({
       where: { id, clientId },
     });
     if (!existingContact) {
-      return null;
+      throw new Error("Contact not found");
     }
 
     return await prisma.$transaction(async (tx) => {
-      // Update basic contact info
-      await tx.contact.update({ where: { id }, data: contactData });
+      // 1. Update base contact fields
+      if (Object.keys(contactData).length > 0) {
+        await tx.contact.update({
+          where: { id },
+          data: contactData,
+        });
+      }
 
-      // Update custom fields if provided
-      if (customFields) {
+      // 2. Update group assignment (join table only, not returned)
+      if (groupId) {
+        const group = await tx.group.findFirst({
+          where: { id: groupId, clientId },
+        });
+        if (!group) {
+          throw new Error("Group not found or does not belong to this client");
+        }
+
+        await tx.contactGroup.deleteMany({
+          where: { contactId: id },
+        });
+
+        await tx.contactGroup.create({
+          data: {
+            contactId: id,
+            groupId,
+          },
+        });
+      }
+
+      // 3. Update custom fields
+      if (customFields && Object.keys(customFields).length > 0) {
         await Promise.all(
-          Object.entries(customFields).map(async ([customFieldId, value]) => {
-            await tx.contactCustomFieldValue.upsert({
+          Object.entries(customFields).map(([customFieldId, value]) =>
+            tx.contactCustomFieldValue.upsert({
               where: {
                 contactId_customFieldId: {
                   contactId: id,
@@ -213,11 +320,12 @@ export class ContactRepository {
               update: {
                 value,
               },
-            });
-          })
+            }),
+          ),
         );
       }
 
+      // 4. RETURN EXACT SAME SHAPE AS OLD METHOD ✅
       return await tx.contact.findUnique({
         where: { id },
         include: {
@@ -231,12 +339,77 @@ export class ContactRepository {
             },
           },
           customFieldValues: {
-            include: { customField: true },
+            include: {
+              customField: true,
+            },
           },
         },
       });
     });
   }
+
+  // async update(
+  //   id: string,
+  //   data: Partial<Contact>,
+  //   clientId: string
+  // ): Promise<Contact | null> {
+  //   const { customFields, ...contactData } = data;
+
+  //   // First, verify the contact belongs to the client
+  //   const existingContact = await prisma.contact.findFirst({
+  //     where: { id, clientId },
+  //   });
+  //   if (!existingContact) {
+  //     return null;
+  //   }
+
+  //   return await prisma.$transaction(async (tx) => {
+  //     // Update basic contact info
+  //     await tx.contact.update({ where: { id }, data: contactData });
+
+  //     // Update custom fields if provided
+  //     if (customFields) {
+  //       await Promise.all(
+  //         Object.entries(customFields).map(async ([customFieldId, value]) => {
+  //           await tx.contactCustomFieldValue.upsert({
+  //             where: {
+  //               contactId_customFieldId: {
+  //                 contactId: id,
+  //                 customFieldId,
+  //               },
+  //             },
+  //             create: {
+  //               contactId: id,
+  //               customFieldId,
+  //               value,
+  //             },
+  //             update: {
+  //               value,
+  //             },
+  //           });
+  //         })
+  //       );
+  //     }
+
+  //     return await tx.contact.findUnique({
+  //       where: { id },
+  //       include: {
+  //         createdBy: {
+  //           select: {
+  //             id: true,
+  //             email: true,
+  //             role: true,
+  //             createdAt: true,
+  //             updatedAt: true,
+  //           },
+  //         },
+  //         customFieldValues: {
+  //           include: { customField: true },
+  //         },
+  //       },
+  //     });
+  //   });
+  // }
 
   async delete(id: string, clientId: string): Promise<Contact | null> {
     const existing = await prisma.contact.findUnique({

@@ -11,6 +11,11 @@ import { CustomFieldRepository } from '../../infrastructure/repositories/CustomF
 import { AuthService, TokenPayload } from '../../infrastructure/services/AuthService';
 import { AuthRequest } from '../middlewares/authMiddleware';
 import prisma from '../../infrastructure/database/prisma';
+import { ForgotPasswordUseCase } from '../../core/use-cases/auth/ForgotPasswordUseCase';
+import { ResetPasswordUseCase } from '../../core/use-cases/auth/ResetPasswordUseCase';
+import { EmailService } from '../../infrastructure/services/EmailService';
+
+
 
 const userRepository = new UserRepository();
 const adminRepository = new AdminRepository();
@@ -24,6 +29,12 @@ const clientSelfRegistration = new ClientSelfRegistrationUseCase(
   userRepository,
   customFieldRepository
 );
+
+const emailService = new EmailService();
+const forgotPasswordUseCase = new ForgotPasswordUseCase(userRepository, authService, emailService);
+const resetPasswordUseCase  = new ResetPasswordUseCase(userRepository, authService);
+
+
 
 
 export class AuthController {
@@ -43,6 +54,23 @@ export class AuthController {
       if (!isValidPassword) {
         res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid credentials' });
         return;
+      }
+
+      // Check client status for client users
+      if (user.clientId) {
+        const client = await clientRepository.findById(user.clientId);
+        if (!client) {
+          res.status(StatusCodes.UNAUTHORIZED).json({ message: 'Invalid credentials' });
+          return;
+        }
+        if (!client.isActive) {
+          res.status(StatusCodes.FORBIDDEN).json({ message: 'Your account has been deactivated. Please contact support.' });
+          return;
+        }
+        if (!client.isApproved) {
+          res.status(StatusCodes.FORBIDDEN).json({ message: 'Your account is pending approval. Please wait for admin approval.' });
+          return;
+        }
       }
 
       // Generate token pair
@@ -144,6 +172,15 @@ export class AuthController {
     }
   }
 
+  private static readonly REGISTRATION_VALIDATION_ERRORS = [
+    'Client with this name already exists',
+    'User with this email already exists',
+    'A client with this registration email already exists',
+    'A client with this mailgun domain already exists',
+    'A client with this from email already exists',
+    'Plan not found',
+  ];
+
   async registerClient(req: Request, res: Response): Promise<void> {
     try {
       const client = await clientSelfRegistration.execute(req.body);
@@ -158,8 +195,7 @@ export class AuthController {
     } catch (error: any) {
       console.error('Client registration error:', error);
 
-      if (error.message === 'Client with this name already exists' ||
-        error.message === 'User with this email already exists') {
+      if (error.message && AuthController.REGISTRATION_VALIDATION_ERRORS.some(e => error.message.startsWith(e))) {
         res.status(StatusCodes.BAD_REQUEST).json({ message: error.message });
         return;
       }
@@ -331,6 +367,69 @@ export class AuthController {
       });
     } catch (error) {
       console.error('Logout error:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
+
+
+  /**
+   * Initiate password reset — send reset link to email
+   * POST /auth/forgot-password
+   * Body: { email: string }
+   */
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email } = req.body;
+ 
+      // Always respond with 200 to prevent user enumeration
+      await forgotPasswordUseCase.execute(email);
+ 
+      res.json({
+        success: true,
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      // Still return 200 — never leak internal errors here
+      res.json({
+        success: error instanceof Error ? error.message : 'An error occurred',
+        message: 'If an account with that email exists, a password reset link has been sent.',
+      });
+    }
+  }
+
+
+    /**
+   * Complete password reset — validate token and set new password
+   * POST /auth/reset-password
+   * Body: { token: string; newPassword: string }
+   */
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+ 
+      await resetPasswordUseCase.execute(token, newPassword);
+ 
+      res.json({
+        success: true,
+        message: 'Password has been reset successfully. Please log in with your new password.',
+      });
+    } catch (error: any) {
+      console.error('Reset password error:', error);
+ 
+      if (error.message === 'INVALID_OR_EXPIRED_TOKEN') {
+        res.status(StatusCodes.BAD_REQUEST).json({
+          message: 'This reset link is invalid or has expired. Please request a new one.',
+        });
+        return;
+      }
+ 
+      if (error.message === 'USER_NOT_FOUND') {
+        res.status(StatusCodes.NOT_FOUND).json({ message: 'User not found.' });
+        return;
+      }
+ 
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
     }
   }

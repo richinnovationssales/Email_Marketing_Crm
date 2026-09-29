@@ -2,11 +2,13 @@
 import { Router } from 'express';
 import { ContactGroupController } from '../controllers/ContactGroupController';
 import { authMiddleware } from '../middlewares/authMiddleware';
+import { checkClientApproval } from '../middlewares/clientApprovalMiddleware';
 
 const router = Router();
 const contactGroupController = new ContactGroupController();
 
 router.use(authMiddleware);
+router.use(checkClientApproval);
 
 router.post('/assign', contactGroupController.assignMultipleContactsToGroup);
 router.delete('/remove', contactGroupController.removeMultipleContactsFromGroup);

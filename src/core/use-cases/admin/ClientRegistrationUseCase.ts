@@ -13,6 +13,9 @@ export interface ClientRegistrationData {
     adminEmail: string;
     adminPassword: string;
     registrationEmail?: string; // Default sender email (falls back to adminEmail)
+    mailgunDomain?: string;     // Client's verified Mailgun domain
+    mailgunFromEmail?: string;  // Override sender email
+    mailgunFromName?: string;   // Sender display name
     customFields?: CustomFieldDefinition[];
 }
 
@@ -24,22 +27,38 @@ export class ClientRegistrationUseCase {
     ) { }
 
     async execute(data: ClientRegistrationData): Promise<Client> {
-        const existingClient = await this.clientRepository.findByName(data.name);
+        // Run all uniqueness checks in parallel for efficiency
+        const resolvedRegistrationEmail = data.registrationEmail || data.adminEmail;
+
+        const [existingClient, existingUser, existingByRegEmail, existingByDomain, existingByFromEmail, plan] = await Promise.all([
+            this.clientRepository.findByName(data.name),
+            this.userRepository.findByEmail(data.adminEmail),
+            this.clientRepository.findByRegistrationEmail(resolvedRegistrationEmail),
+            data.mailgunDomain ? this.clientRepository.findByMailgunDomain(data.mailgunDomain) : null,
+            data.mailgunFromEmail ? this.clientRepository.findByMailgunFromEmail(data.mailgunFromEmail) : null,
+            prisma.plan.findUnique({ where: { id: data.planId } })
+        ]);
+
         if (existingClient) {
             throw new Error('Client with this name already exists');
         }
-
-        const existingUser = await this.userRepository.findByEmail(data.adminEmail);
         if (existingUser) {
             throw new Error('User with this email already exists');
         }
-
-        const hashedPassword = await bcrypt.hash(data.adminPassword, 10);
-
-        const plan = await prisma.plan.findUnique({ where: { id: data.planId } });
+        if (existingByRegEmail) {
+            throw new Error('A client with this registration email already exists');
+        }
+        if (existingByDomain) {
+            throw new Error('A client with this mailgun domain already exists');
+        }
+        if (existingByFromEmail) {
+            throw new Error('A client with this from email already exists');
+        }
         if (!plan) {
             throw new Error(`Plan not found with ID: ${data.planId}`);
         }
+
+        const hashedPassword = await bcrypt.hash(data.adminPassword, 10);
 
         const customFieldsToCreate = data.customFields && data.customFields.length > 0
             ? data.customFields
@@ -51,6 +70,9 @@ export class ClientRegistrationUseCase {
                     name: data.name,
                     planId: data.planId,
                     registrationEmail: data.registrationEmail || data.adminEmail, // Default to adminEmail
+                    mailgunDomain: data.mailgunDomain,
+                    mailgunFromEmail: data.mailgunFromEmail,
+                    mailgunFromName: data.mailgunFromName,
                     isApproved: true,
                     isActive: true,
                     remainingMessages: plan.emailLimit // Initialize with plan limit

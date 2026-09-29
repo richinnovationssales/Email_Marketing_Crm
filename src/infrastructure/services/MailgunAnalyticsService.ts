@@ -81,43 +81,45 @@ export class MailgunAnalyticsService {
     startDate?: Date,
     endDate?: Date
   ): Promise<AnalyticsOverview> {
-    const eventCounts = await this.emailEventRepository.countByClient(clientId, startDate, endDate);
+    const tag = '[analytics/overview]';
+    const started = Date.now();
 
-    let totalSent = 0;
-    let totalDelivered = 0;
-    let totalOpened = 0;
-    let totalClicked = 0;
-    let totalBounced = 0;
-    let totalComplaints = 0;
+    // Cohort-based counts: everything is measured against emails SENT in the window,
+    // so delivered/bounced can never exceed sent.
+    const cohort = await this.emailEventRepository.getClientCohortCounts(clientId, startDate, endDate);
 
-    for (const item of eventCounts) {
-      switch (item.eventType) {
-        case 'SENT':
-          totalSent = item.count;
-          break;
-        case 'DELIVERED':
-          totalDelivered = item.count;
-          break;
-        case 'OPENED':
-          totalOpened = item.count;
-          break;
-        case 'CLICKED':
-          totalClicked = item.count;
-          break;
-        case 'BOUNCED':
-        case 'FAILED':
-          totalBounced += item.count;
-          break;
-        case 'COMPLAINED':
-          totalComplaints = item.count;
-          break;
-      }
+    // Diagnostic only: raw per-event-type row counts for the same window. Raw counts are
+    // what used to be returned; they mix events from different send dates and include
+    // repeated delivery/failure events per recipient.
+    const rawCounts = await this.emailEventRepository.countByClient(clientId, startDate, endDate);
+    const raw = Object.fromEntries(rawCounts.map((c) => [c.eventType, c.count]));
+
+    const { totalSent, totalDelivered, totalOpened, totalClicked, totalBounced, totalComplaints } = cohort;
+
+    const pct = (num: number, den: number) =>
+      den > 0 ? Math.min(100, Math.round((num / den) * 10000) / 100) : 0;
+
+    const openRate = pct(cohort.uniqueOpens, totalDelivered);
+    const clickRate = pct(cohort.uniqueClicks, totalDelivered);
+    const bounceRate = pct(totalBounced, totalSent);
+    const deliveryRate = pct(totalDelivered, totalSent);
+
+    console.log(
+      `${tag} client=${clientId} start=${startDate?.toISOString() ?? 'none'} end=${endDate?.toISOString() ?? 'none'} ` +
+        `took=${Date.now() - started}ms\n` +
+        `${tag} raw event rows in window: ${JSON.stringify(raw)}\n` +
+        `${tag} cohort: ${JSON.stringify(cohort)}\n` +
+        `${tag} rates: open=${openRate} click=${clickRate} bounce=${bounceRate} delivery=${deliveryRate}`
+    );
+    if (cohort.totalSent < cohort.cohortPairs) {
+      console.warn(`${tag} sent (${cohort.totalSent}) < distinct cohort pairs (${cohort.cohortPairs}) - unexpected`);
     }
-
-    const openRate = totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0;
-    const clickRate = totalDelivered > 0 ? (totalClicked / totalDelivered) * 100 : 0;
-    const bounceRate = totalSent > 0 ? (totalBounced / totalSent) * 100 : 0;
-    const deliveryRate = totalSent > 0 ? (totalDelivered / totalSent) * 100 : 0;
+    if ((raw.DELIVERED ?? 0) > (raw.SENT ?? 0)) {
+      console.warn(
+        `${tag} raw DELIVERED (${raw.DELIVERED}) > raw SENT (${raw.SENT}) in window: ` +
+          `events from sends outside the window and/or duplicate delivery events are in range`
+      );
+    }
 
     return {
       totalSent,
@@ -126,10 +128,10 @@ export class MailgunAnalyticsService {
       totalClicked,
       totalBounced,
       totalComplaints,
-      openRate: Math.round(openRate * 100) / 100,
-      clickRate: Math.round(clickRate * 100) / 100,
-      bounceRate: Math.round(bounceRate * 100) / 100,
-      deliveryRate: Math.round(deliveryRate * 100) / 100,
+      openRate,
+      clickRate,
+      bounceRate,
+      deliveryRate,
     };
   }
 

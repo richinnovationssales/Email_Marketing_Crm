@@ -26,10 +26,45 @@ export const clientRegistrationSchema = z.object({
         .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
         .regex(/[0-9]/, 'Password must contain at least one number'),
     // registrationEmail defaults to adminEmail if not provided
-    registrationEmail: z.string().email('Valid registration email is required').optional(),
+    registrationEmail: z.string().optional(),
+    mailgunDomain: z.string().optional(),
+    mailgunFromEmail: z.string().email('mailgunFromEmail must be a valid email address').optional(),
+    mailgunFromName: z.string().optional(),
     customFields: z.array(customFieldDefinitionSchema).optional()
+}).refine((data) => {
+    // Ensure mailgunFromEmail domain matches mailgunDomain to prevent "on behalf of" in Outlook
+    if (data.mailgunDomain && data.mailgunFromEmail) {
+        const fromDomain = data.mailgunFromEmail.split('@')[1];
+        return fromDomain === data.mailgunDomain;
+    }
+    return true;
+}, {
+    message: 'mailgunFromEmail domain must match mailgunDomain to prevent "on behalf of" display in email clients (e.g., use info@mailme.smartsolutionsme.com if mailgunDomain is mailme.smartsolutionsme.com)',
+    path: ['mailgunFromEmail'],
 });
 
+
+export const forgotPasswordSchema = z.object({
+  email: z
+    .string({ message: 'Email is required' })
+    .email('Must be a valid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z
+    .string({ message: 'Token is required' })
+    .min(1, 'Token is required'),
+
+  newPassword: z
+    .string({ message: 'New password is required' })
+    .min(8, 'Password must be at least 8 characters')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number'),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput  = z.infer<typeof resetPasswordSchema>;
 export const clientSelfRegistrationSchema = clientRegistrationSchema;
 
 export type ClientRegistrationInput = z.infer<typeof clientRegistrationSchema>;

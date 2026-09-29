@@ -2,6 +2,22 @@
 // Zod validation schemas for campaign input validation
 
 import { z } from 'zod';
+import { findInvalidGreetingTokens, GREETING_TOKENS } from '../../core/constants/greetingTokens';
+
+const greetingSnapshotSchema = z
+  .string()
+  .max(500, 'Greeting must be less than 500 characters')
+  .superRefine((template, ctx) => {
+    const invalid = findInvalidGreetingTokens(template);
+    if (invalid.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Invalid greeting token(s): ${invalid
+          .map((t) => `{{${t}}}`)
+          .join(', ')}. Allowed: ${GREETING_TOKENS.map((t) => `{{${t}}}`).join(', ')}`,
+      });
+    }
+  });
 
 // Recurring frequency enum matching Prisma schema
 export const RecurringFrequencyEnum = z.enum([
@@ -49,6 +65,10 @@ export const createCampaignSchema = z.object({
   
   // For CUSTOM frequency, allow cron string
   customCronExpression: z.string().optional(),
+
+  // Greeting (optional)
+  greetingId: z.string().cuid().optional().nullable(),
+  greetingSnapshot: greetingSnapshotSchema.optional().nullable(),
 }).refine((data) => {
   // If not recurring, no further validation needed
   if (!data.isRecurring) {

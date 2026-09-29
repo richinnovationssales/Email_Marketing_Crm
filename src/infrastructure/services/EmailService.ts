@@ -1,32 +1,26 @@
-import * as nodemailer from 'nodemailer';
+// src/infrastructure/services/EmailService.ts
+import { MailgunService } from './MailgunService';
+
+const APP_NAME = process.env.APP_NAME || 'MyApp';
 
 export class EmailService {
-  private transporter: nodemailer.Transporter;
+  private mailgunService: MailgunService;
 
   constructor() {
-    // For development, we'll use a test account from https://ethereal.email/
-    // In production, you would replace this with your actual email service provider's configuration.
-    this.transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: 'dummy@gmail.com', // generated ethereal user
-        pass: '##gshshhshh', // generated ethereal password
-      },
-    });
+    this.mailgunService = new MailgunService();
   }
 
-  async sendMail(to: string, subject: string, html: string) {
-    const info = await this.transporter.sendMail({
-      from: '"Your App Name" <noreply@yourapp.com>',
+  async sendMail(to: string, subject: string, html: string): Promise<void> {
+
+    console.log(`Sending email to ${to} with subject "${subject}" via Mailgun...`);
+    const result = await this.mailgunService.sendSingleEmail({
+      from: 'Smart Solutions <no-reply@mailme.smartsolutionsme.com>',
       to,
       subject,
       html,
+      tags: ['transactional', 'auth'],
     });
 
-    console.log('Message sent: %s', info.messageId);
-    // Preview only available when sending through an Ethereal account
-    console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+    console.log('Message sent via Mailgun. ID: %s', result.id);
   }
 }

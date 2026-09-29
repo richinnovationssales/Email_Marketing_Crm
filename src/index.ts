@@ -12,6 +12,7 @@ import errorHandler from './presentation/middlewares/errorHandler';
 import prisma from './infrastructure/database/prisma';
 import { SendCampaign } from './core/use-cases/client/SendCampaign';
 import { MailgunService } from './infrastructure/services/MailgunService';
+import { PlanRenewalScheduler } from './infrastructure/services/PlanRenewalScheduler';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -24,11 +25,15 @@ const stream = {
 app.use(morgan('tiny', { stream }));
 app.use(cors({
   origin: [
+    'https://emailcrm.smartsolutionsme.com',
     'http://localhost:3001',
     'http://localhost:3000',
+    'http://localhost:4000',
+    'http://localhost:4001',
     'https://email-marketing-crm-web.vercel.app',
     'https://email-marketing-crm-web-git-main-sachin-projects-54e78147.vercel.app',
-    'https://email-marketing-crm-web-sachin-projects-54e78147.vercel.app'
+    'https://email-marketing-crm-web-sachin-projects-54e78147.vercel.app',
+    'https://emailcrm.smartsolutionsme.com/',
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -62,8 +67,10 @@ const sendCampaignUseCase = new SendCampaign(
   mailgunService
 );
 const campaignScheduler = new CampaignScheduler(sendCampaignUseCase, campaignRepository);
+const planRenewalScheduler = new PlanRenewalScheduler();
 
 campaignScheduler.start();
+planRenewalScheduler.start();
 
 const server = app.listen(port, () => {
   Logger.info(`Server is running on port : ${port}`);
@@ -77,6 +84,8 @@ const gracefulShutdown = (signal: string) => {
     Logger.info('Database connection closed.');
     campaignScheduler.stop();
     Logger.info('Campaign scheduler stopped.');
+    planRenewalScheduler.stop();
+    Logger.info('Plan renewal scheduler stopped.');
     process.exit(0);
   });
 };

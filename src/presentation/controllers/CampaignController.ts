@@ -66,31 +66,25 @@ export class CampaignController {
       const shouldSendImmediately = req.body.sendImmediately !== false;
       
       if (!campaign.isRecurring && shouldSendImmediately) {
-        try {
-          // If already approved (by admin role), skip approval step
-          if (campaign.status !== CampaignStatus.APPROVED) {
-             console.log('Auto-approving campaign', campaign.id);
-             await campaignApprovalUseCase.approve(campaign.id, req.user.clientId);
-          }
-          
-          // Then send
-          console.log('Sending campaign', campaign.id);
-          await sendCampaignUseCase.execute(campaign.id, req.user.clientId);
-          console.log('Campaign sent', campaign.id);
-          // Re-fetch campaign to get updated status
-          const updatedCampaign = await campaignManagementUseCase.findById(campaign.id, req.user.clientId);
-          res.status(StatusCodes.CREATED).json(updatedCampaign);
-          return;
-        } catch (error) {
-          console.error('Error in immediate send:', error);
-          // If sending fails, we still return the created campaign but with a warning or error log
-          // The campaign will be in APPROVED or DRAFT state depending on where it failed
-           res.status(StatusCodes.CREATED).json({
-            ...campaign,
-            warning: 'Campaign created but failed to send immediately. Please check logs.'
-           });
-           return;
+        // If already approved (by admin role), skip approval step
+        if (campaign.status !== CampaignStatus.APPROVED) {
+           console.log('Auto-approving campaign', campaign.id);
+           await campaignApprovalUseCase.approve(campaign.id, req.user.clientId);
         }
+
+        // Fire-and-forget: respond immediately, send in background.
+        // Prevents HTTP timeout for large campaigns (40k+ recipients).
+        console.log('Initiating background send for campaign', campaign.id);
+        sendCampaignUseCase.execute(campaign.id, req.user.clientId)
+          .then(() => console.log(`Campaign ${campaign.id} sent successfully in background`))
+          .catch((error) => console.error(`Campaign ${campaign.id} background send failed:`, error));
+
+        res.status(StatusCodes.CREATED).json({
+          ...campaign,
+          sendStatus: 'initiated',
+          message: 'Campaign created and send initiated. Check campaign status for progress.'
+        });
+        return;
       }
       console.log('Campaign created and returing outside', campaign.id);
       res.status(StatusCodes.CREATED).json(campaign);
@@ -248,8 +242,18 @@ export class CampaignController {
         return;
       }
       const { campaignId } = req.params;
-      await sendCampaignUseCase.execute(campaignId, req.user.clientId);
-      res.status(StatusCodes.OK).json({ message: 'Campaign sent successfully' });
+
+      // Fire-and-forget: respond immediately, process in background.
+      // This prevents HTTP timeout for large campaigns (40k+ recipients).
+      // The atomicStatusTransition in the use case prevents duplicate sends.
+      sendCampaignUseCase.execute(campaignId, req.user.clientId)
+        .then(() => console.log(`Campaign ${campaignId} sent successfully in background`))
+        .catch((error) => console.error(`Campaign ${campaignId} background send failed:`, error));
+
+      res.status(StatusCodes.ACCEPTED).json({
+        message: 'Campaign send initiated. Check campaign status for progress.',
+        campaignId
+      });
     } catch (error) {
       console.error('Error sending campaign:', error);
       res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });

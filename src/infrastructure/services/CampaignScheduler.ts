@@ -62,8 +62,8 @@ export class CampaignScheduler {
   start() {
     console.log('Starting campaign scheduler...');
     
-    // This will run every minute to check for recurring campaigns
-    this.task = cron.schedule('* * * * *', async () => {
+    // This will run every 15 minutes to check for recurring campaigns
+    this.task = cron.schedule('*/15 * * * *', async () => {
       try {
         const campaigns = await this.campaignRepository.findRecurring();
 
@@ -134,7 +134,7 @@ export class CampaignScheduler {
                 }
 
                 console.log(`Executing recurring campaign ${campaign.id} (${campaign.name})`);
-                await this.sendCampaignUseCase.execute(campaign.id, campaign.clientId);
+                await this.sendCampaignUseCase.execute(campaign.id, campaign.clientId, true);
               } catch (error) {
                 console.error(`Error executing recurring campaign ${campaign.id}:`, error);
               }

@@ -45,6 +45,23 @@ export class EmailEventRepository {
     });
   }
 
+  async createMany(dataArray: CreateEmailEventData[]) {
+    if (dataArray.length === 0) return;
+    const now = new Date();
+    return prisma.emailEvent.createMany({
+      data: dataArray.map(d => ({
+        clientId: d.clientId,
+        campaignId: d.campaignId,
+        contactEmail: d.contactEmail,
+        eventType: d.eventType,
+        mailgunId: d.mailgunId,
+        errorMessage: d.errorMessage,
+        metadata: d.metadata ? JSON.stringify(d.metadata) : null,
+        timestamp: d.timestamp || now,
+      })),
+    });
+  }
+
 
   async findMany(filters: EmailEventFilters, limit = 100, offset = 0) {
     const where: Prisma.EmailEventWhereInput = {};
@@ -109,6 +126,84 @@ export class EmailEventRepository {
   }
 
   /**
+   * Cohort-based overview for a client: only emails SENT inside the date window are
+   * considered, and every other metric is measured against that same cohort
+   * (distinct campaign+contact pairs), so delivered/bounced can never exceed sent.
+   * Bounces are net: a pair that bounced/failed but was eventually delivered is not a bounce.
+   */
+  async getClientCohortCounts(clientId: string, startDate?: Date, endDate?: Date) {
+    const startCond = startDate ? Prisma.sql`AND "timestamp" >= ${startDate}` : Prisma.empty;
+    const endCond = endDate ? Prisma.sql`AND "timestamp" <= ${endDate}` : Prisma.empty;
+
+    type Row = {
+      sent: bigint;
+      cohort_pairs: bigint;
+      delivered: bigint;
+      bounced: bigint;
+      complaints: bigint;
+      opened: bigint;
+      clicked: bigint;
+      unique_opens: bigint;
+      unique_clicks: bigint;
+    };
+
+    const rows = await prisma.$queryRaw<Row[]>`
+      WITH sent_events AS (
+        SELECT "campaignId", "contactEmail"
+        FROM "EmailEvent"
+        WHERE "clientId" = ${clientId}
+          AND "eventType" = 'SENT'
+          AND "campaignId" IS NOT NULL
+          ${startCond}
+          ${endCond}
+      ),
+      cohort AS (
+        SELECT DISTINCT "campaignId", "contactEmail" FROM sent_events
+      ),
+      per_pair AS (
+        SELECT
+          c."campaignId",
+          c."contactEmail",
+          COALESCE(bool_or(ev."eventType" = 'DELIVERED'), false)                AS delivered,
+          COALESCE(bool_or(ev."eventType" IN ('BOUNCED', 'FAILED')), false)     AS bounced,
+          COALESCE(bool_or(ev."eventType" = 'COMPLAINED'), false)               AS complained,
+          COUNT(*) FILTER (WHERE ev."eventType" = 'OPENED')                     AS opens,
+          COUNT(*) FILTER (WHERE ev."eventType" = 'CLICKED')                    AS clicks
+        FROM cohort c
+        LEFT JOIN "EmailEvent" ev
+          ON ev."clientId" = ${clientId}
+         AND ev."campaignId" = c."campaignId"
+         AND ev."contactEmail" = c."contactEmail"
+        GROUP BY c."campaignId", c."contactEmail"
+      )
+      SELECT
+        (SELECT COUNT(*) FROM sent_events)                       AS sent,
+        COUNT(*)                                                 AS cohort_pairs,
+        COUNT(*) FILTER (WHERE delivered)                        AS delivered,
+        COUNT(*) FILTER (WHERE bounced AND NOT delivered)        AS bounced,
+        COUNT(*) FILTER (WHERE complained)                       AS complaints,
+        COALESCE(SUM(opens), 0)                                  AS opened,
+        COALESCE(SUM(clicks), 0)                                 AS clicked,
+        COUNT(*) FILTER (WHERE opens > 0)                        AS unique_opens,
+        COUNT(*) FILTER (WHERE clicks > 0)                       AS unique_clicks
+      FROM per_pair
+    `;
+
+    const r = rows[0];
+    return {
+      totalSent: Number(r?.sent ?? 0),
+      cohortPairs: Number(r?.cohort_pairs ?? 0),
+      totalDelivered: Number(r?.delivered ?? 0),
+      totalBounced: Number(r?.bounced ?? 0),
+      totalComplaints: Number(r?.complaints ?? 0),
+      totalOpened: Number(r?.opened ?? 0),
+      totalClicked: Number(r?.clicked ?? 0),
+      uniqueOpens: Number(r?.unique_opens ?? 0),
+      uniqueClicks: Number(r?.unique_clicks ?? 0),
+    };
+  }
+
+  /**
    * Get unique opens/clicks for a campaign (count distinct emails)
    */
   async getUniqueCounts(campaignId: string, eventType: EmailEventType): Promise<number> {
@@ -145,6 +240,163 @@ export class EmailEventRepository {
         },
       },
     });
+  }
+
+  /**
+   * Find emails that already have a SENT event for a campaign.
+   * Used to prevent duplicate sends on retry after partial failure.
+   *
+   * @param sinceDate - Only consider SENT events after this date.
+   *   For recurring campaigns, pass campaign.sentAt so that previous cycles
+   *   are ignored and only the current (partial) cycle's sends are filtered.
+   */
+  async findSentRecipientsForCampaign(
+    campaignId: string,
+    clientId: string,
+    sinceDate?: Date | null
+  ): Promise<string[]> {
+    const where: Prisma.EmailEventWhereInput = {
+      campaignId,
+      clientId,
+      eventType: 'SENT',
+    };
+
+    if (sinceDate) {
+      where.timestamp = { gt: sinceDate };
+    }
+
+    const events = await prisma.emailEvent.findMany({
+      where,
+      select: { contactEmail: true },
+      distinct: ['contactEmail'],
+    });
+    return events.map(e => e.contactEmail);
+  }
+
+  /**
+   * Get events for a campaign using cursor-based pagination (memory-safe for large datasets)
+   */
+  async findByCampaignBatched(
+    campaignId: string,
+    batchSize: number = 5000,
+    callback: (events: { id: string; contactEmail: string; eventType: EmailEventType; timestamp: Date; errorMessage: string | null }[]) => Promise<void>
+  ) {
+    let cursor: string | undefined;
+    while (true) {
+      const events = await prisma.emailEvent.findMany({
+        where: { campaignId },
+        select: {
+          id: true,
+          contactEmail: true,
+          eventType: true,
+          timestamp: true,
+          errorMessage: true,
+        },
+        orderBy: { id: 'asc' },
+        take: batchSize,
+        ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      });
+
+      if (events.length === 0) break;
+      await callback(events);
+      cursor = events[events.length - 1].id;
+      if (events.length < batchSize) break;
+    }
+  }
+
+  /**
+   * Get all event counts + unique opens/clicks for a campaign in a single DB query.
+   * Much more efficient than separate groupBy + distinct queries for large datasets.
+   */
+  async getAggregatedCounts(campaignId: string): Promise<{
+    totalSent: number;
+    totalDelivered: number;
+    totalOpened: number;
+    totalClicked: number;
+    totalBounced: number;
+    totalUnsubscribed: number;
+    totalComplaints: number;
+    uniqueOpens: number;
+    uniqueClicks: number;
+  }> {
+    type AggRow = {
+      event_type: string;
+      total: bigint;
+      unique_contacts: bigint;
+    };
+
+    const rows = await prisma.$queryRaw<AggRow[]>`
+      SELECT
+        "eventType"          AS event_type,
+        COUNT(*)             AS total,
+        COUNT(DISTINCT "contactEmail") AS unique_contacts
+      FROM "EmailEvent"
+      WHERE "campaignId" = ${campaignId}
+      GROUP BY "eventType"
+    `;
+
+    // Net bounces: count contacts that bounced/failed but were NEVER successfully delivered.
+    // Mailgun retries soft bounces — if it eventually delivers, that contact is NOT a real bounce.
+    type NetBounceRow = { net_bounces: bigint };
+    const netBounceRows = await prisma.$queryRaw<NetBounceRow[]>`
+      SELECT COUNT(*) AS net_bounces
+      FROM (
+        SELECT DISTINCT "contactEmail"
+        FROM "EmailEvent"
+        WHERE "campaignId" = ${campaignId}
+          AND "eventType" IN ('BOUNCED', 'FAILED')
+          AND "contactEmail" NOT IN (
+            SELECT DISTINCT "contactEmail"
+            FROM "EmailEvent"
+            WHERE "campaignId" = ${campaignId}
+              AND "eventType" = 'DELIVERED'
+          )
+      ) AS undelivered_bounces
+    `;
+
+    const result = {
+      totalSent: 0, totalDelivered: 0, totalOpened: 0,
+      totalClicked: 0, totalBounced: 0, totalUnsubscribed: 0,
+      totalComplaints: 0, uniqueOpens: 0, uniqueClicks: 0,
+    };
+
+    for (const row of rows) {
+      const total = Number(row.total);
+      const unique = Number(row.unique_contacts);
+      switch (row.event_type) {
+        case 'SENT':        result.totalSent        = total; break;
+        case 'DELIVERED':   result.totalDelivered   = total; break;
+        case 'OPENED':      result.totalOpened      = total; result.uniqueOpens   = unique; break;
+        case 'CLICKED':     result.totalClicked     = total; result.uniqueClicks  = unique; break;
+        case 'BOUNCED':
+        case 'FAILED':      break; // handled by net bounce query
+        case 'COMPLAINED':  result.totalComplaints  = total; break;
+        case 'UNSUBSCRIBED': result.totalUnsubscribed = total; break;
+      }
+    }
+
+    // Use net bounces: only contacts that bounced and were never delivered
+    result.totalBounced = Number(netBounceRows[0]?.net_bounces ?? 0);
+
+    return result;
+  }
+
+  /**
+   * Count unique contacts (distinct contactEmail) who received a SENT event
+   * for any of the given campaign IDs. Used to compute "contacts reached" for
+   * a date-range export without loading all event rows into memory.
+   */
+  async countUniqueContactsByCampaigns(campaignIds: string[], clientId: string): Promise<number> {
+    if (campaignIds.length === 0) return 0;
+    type Row = { unique_contacts: bigint };
+    const rows = await prisma.$queryRaw<Row[]>`
+      SELECT COUNT(DISTINCT "contactEmail") AS unique_contacts
+      FROM "EmailEvent"
+      WHERE "clientId" = ${clientId}
+        AND "campaignId" = ANY(${campaignIds}::text[])
+        AND "eventType" = 'SENT'
+    `;
+    return Number(rows[0]?.unique_contacts ?? 0);
   }
 
   /**

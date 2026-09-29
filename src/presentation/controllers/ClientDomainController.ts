@@ -48,6 +48,7 @@ export class ClientDomainController {
   /**
    * PUT /client/domain - Configure or update domain (CLIENT_SUPER_ADMIN only)
    */
+  //this is the function to update domain config
   updateDomainConfig = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const clientId = req.user?.clientId;
@@ -73,14 +74,20 @@ export class ClientDomainController {
       const isNewConfig = !currentClient.mailgunDomain && mailgunDomain;
       const activityType = isNewConfig ? 'MAILGUN_DOMAIN_CONFIGURED' : 'MAILGUN_DOMAIN_UPDATED';
 
+      // Build update payload — only include fields that were explicitly provided
+      const updateData: Record<string, any> = {};
+      if (mailgunDomain !== undefined) updateData.mailgunDomain = mailgunDomain;
+      if (mailgunFromEmail !== undefined) updateData.mailgunFromEmail = mailgunFromEmail;
+      if (mailgunFromName !== undefined) updateData.mailgunFromName = mailgunFromName;
+
+      // Reset verification only if the domain itself changed
+      if (mailgunDomain !== undefined && mailgunDomain !== currentClient.mailgunDomain) {
+        updateData.mailgunVerified = false;
+        updateData.mailgunVerifiedAt = null;
+      }
+
       // Update domain configuration
-      const updatedClient = await this.clientRepository.update(clientId, {
-        mailgunDomain: mailgunDomain || null,
-        mailgunFromEmail: mailgunFromEmail || null,
-        mailgunFromName: mailgunFromName || null,
-        mailgunVerified: false, // Reset verification status on change
-        mailgunVerifiedAt: null,
-      });
+      const updatedClient = await this.clientRepository.update(clientId, updateData);
 
       // Log the domain change
       await this.activityLogRepository.logDomainChange(

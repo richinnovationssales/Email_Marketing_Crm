@@ -114,6 +114,23 @@ async activateToggleAdmin(req: AuthRequest, res: Response): Promise<void> {
   }
 }
 
-
+    async promoteToSuperAdmin(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            const adminId = req.params.id;
+            const promotedAdmin = await adminUserManagement.promoteToSuperAdmin(adminId);
+            res.json({ message: 'Admin promoted to Super Admin successfully', admin: promotedAdmin });
+        } catch (error: any) {
+            if (error.message === 'Admin not found') {
+                res.status(StatusCodes.NOT_FOUND).json({ message: error.message });
+                return;
+            }
+            if (error.message === 'Admin is already a Super Admin') {
+                res.status(StatusCodes.CONFLICT).json({ message: error.message });
+                return;
+            }
+            console.error('Error promoting admin to Super Admin:', error);
+            res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+        }
+    }
 
 }

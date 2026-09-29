@@ -15,6 +15,7 @@ export class UserController {
   async createClientAdmin(req: AuthRequest, res: Response): Promise<void> {
     try {
       const clientId = req.user?.clientId;
+      // console.log("dfdf")
       if (!clientId) {
         res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
         return;

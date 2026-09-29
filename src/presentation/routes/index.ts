@@ -14,6 +14,7 @@ import customFieldRoutes from './customFieldRoutes';
 import webhookRoutes from './webhookRoutes';
 import analyticsRoutes from './analyticsRoutes';
 import clientDomainRoutes from './clientDomainRoutes';
+import greetingRoutes from './greetingRoutes';
 
 const router = Router();
 
@@ -45,5 +46,6 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/custom-fields', customFieldRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/client/domain', clientDomainRoutes);
+router.use('/greetings', greetingRoutes);
 
 export default router;

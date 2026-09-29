@@ -164,11 +164,11 @@ export class MailgunWebhookService {
 
     // Update campaign analytics if campaign ID exists
     if (campaignId) {
-      await this.campaignAnalyticsService.incrementMetric(campaignId, eventType);
+      await this.campaignAnalyticsService.incrementMetric(campaignId, eventType, mailgunEvent);
     }
 
     // Handle suppression list updates for bounces, complaints, and unsubscribes
-    await this.handleSuppressionListUpdate(eventType, eventData.recipient || '', clientId, eventData);
+    await this.handleSuppressionListUpdate(eventType, eventData.recipient || '', clientId, eventData, mailgunEvent);
 
     console.log(`Webhook processed successfully: ${eventType} event created`);
 
@@ -213,7 +213,8 @@ export class MailgunWebhookService {
     eventType: EmailEventType,
     email: string,
     clientId: string,
-    eventData: MailgunWebhookPayload['event-data']
+    eventData: MailgunWebhookPayload['event-data'],
+    originalMailgunEvent: string
   ) {
     if (!email) return;
 
@@ -231,14 +232,21 @@ export class MailgunWebhookService {
         break;
 
       case 'COMPLAINED':
-        // Check if it's an unsubscribe or complaint based on original event
-        // For simplicity, we're treating complained events as complaints
-        await this.suppressionListService.addToSuppressionList({
-          email,
-          type: 'COMPLAINT' as SuppressionType,
-          clientId,
-          reason: reason || 'Spam complaint',
-        });
+        if (originalMailgunEvent === 'unsubscribed') {
+          await this.suppressionListService.addToSuppressionList({
+            email,
+            type: 'UNSUBSCRIBE' as SuppressionType,
+            clientId,
+            reason: reason || 'User unsubscribed',
+          });
+        } else {
+          await this.suppressionListService.addToSuppressionList({
+            email,
+            type: 'COMPLAINT' as SuppressionType,
+            clientId,
+            reason: reason || 'Spam complaint',
+          });
+        }
         break;
     }
   }

@@ -10,5 +10,6 @@ router.get('/admin', authMiddleware, dashboardController.getAdminDashboard);
 router.get('/client', authMiddleware, checkClientApproval, dashboardController.getClientDashboard);
 router.get('/employee', authMiddleware, checkClientApproval, dashboardController.getEmployeeDashboard);
 router.get('/campaign-performance', authMiddleware, checkClientApproval, dashboardController.getCampaignPerformanceReport);
+router.get('/client/export', authMiddleware, checkClientApproval, dashboardController.exportClientDashboard);
 
 export default router;

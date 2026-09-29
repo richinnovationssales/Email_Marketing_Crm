@@ -82,4 +82,19 @@ export class AdminUserManagement {
 
     return client;
   }
+
+  async promoteToSuperAdmin(adminId: string): Promise<Admin> {
+    const admin = await this.adminRepository.findById(adminId);
+    if (!admin) {
+      throw new Error("Admin not found");
+    }
+
+    if (admin.role === AdminRole.SUPER_ADMIN) {
+      throw new Error("Admin is already a Super Admin");
+    }
+
+    return this.adminRepository.update(adminId, {
+      role: AdminRole.SUPER_ADMIN,
+    });
+  }
 }

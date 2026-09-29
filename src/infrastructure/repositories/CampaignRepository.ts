@@ -1,4 +1,4 @@
-import { Campaign } from '../../core/entities/Campaign';
+import { Campaign, CampaignSummary } from '../../core/entities/Campaign';
 import { CampaignStatus } from '@prisma/client';
 import prisma from '../../infrastructure/database/prisma';
 import { generateCronExpression, RecurringFrequencyType } from '../utils/cronGenerator';
@@ -32,6 +32,8 @@ export class CampaignRepository {
         recurringDayOfMonth: data.recurringDayOfMonth || null,
         recurringStartDate: data.recurringStartDate ? new Date(data.recurringStartDate) : null,
         recurringEndDate: data.recurringEndDate ? new Date(data.recurringEndDate) : null,
+        greetingId: data.greetingId || null,
+        greetingSnapshot: data.greetingSnapshot || null,
         clientId,
         createdById: userId,
         groups: data.groupIds ? {
@@ -53,10 +55,21 @@ export class CampaignRepository {
     });
   }
 
-  async findAll(clientId: string): Promise<Campaign[]> {
+  async findAll(clientId: string): Promise<CampaignSummary[]> {
     return await prisma.campaign.findMany({
       where: { clientId },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        subject: true,
+        status: true,
+        isRecurring: true,
+        recurringFrequency: true,
+        sentAt: true,
+        clientId: true,
+        createdAt: true,
+        updatedAt: true,
+        createdById: true,
         createdBy: {
           select: {
             id: true,
@@ -66,7 +79,7 @@ export class CampaignRepository {
             updatedAt: true
           }
         },
-        groups: true
+        groups: true,
       },
       orderBy: { createdAt: 'desc' }
     });
@@ -196,6 +209,24 @@ export class CampaignRepository {
       },
     });
     return campaign ? campaign.groups : [];
+  }
+
+  /**
+   * Atomically transition a campaign from one status to another.
+   * Returns true if the transition succeeded (row was updated), false if the
+   * campaign was already in a different status (claimed by another process).
+   */
+  async atomicStatusTransition(
+    id: string,
+    fromStatus: CampaignStatus,
+    toStatus: CampaignStatus,
+    clientId: string
+  ): Promise<boolean> {
+    const result = await prisma.campaign.updateMany({
+      where: { id, clientId, status: fromStatus },
+      data: { status: toStatus },
+    });
+    return result.count > 0;
   }
 
   async findRecurring(): Promise<Campaign[]> {

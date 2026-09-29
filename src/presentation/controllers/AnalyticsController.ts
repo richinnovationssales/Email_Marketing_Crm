@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { MailgunAnalyticsService } from '../../infrastructure/services/MailgunAnalyticsService';
 import { CampaignAnalyticsService } from '../../infrastructure/services/CampaignAnalyticsService';
 import { EmailEventRepository } from '../../infrastructure/repositories/EmailEventRepository';
+import prisma from '../../infrastructure/database/prisma';
 
 const analyticsService = new MailgunAnalyticsService();
 const campaignAnalyticsService = new CampaignAnalyticsService();
@@ -22,12 +23,24 @@ export class AnalyticsController {
       }
 
       // Parse optional date filters
-      const startDate = req.query.startDate
-        ? new Date(req.query.startDate as string)
-        : undefined;
-      const endDate = req.query.endDate
-        ? new Date(req.query.endDate as string)
-        : undefined;
+      const rawStart = req.query.startDate as string | undefined;
+      const rawEnd = req.query.endDate as string | undefined;
+      const startDate = rawStart ? new Date(rawStart) : undefined;
+      let endDate = rawEnd ? new Date(rawEnd) : undefined;
+
+      console.log(
+        `[analytics/overview] request client=${clientId} query=${JSON.stringify(req.query)} ` +
+          `parsedStart=${startDate?.toISOString?.() ?? 'invalid/none'} parsedEnd=${endDate?.toISOString?.() ?? 'invalid/none'}`
+      );
+
+      if ((startDate && isNaN(startDate.getTime())) || (endDate && isNaN(endDate.getTime()))) {
+        return res.status(400).json({ error: 'Invalid startDate or endDate' });
+      }
+
+      // A date-only endDate (YYYY-MM-DD) parses to 00:00 UTC; make it inclusive of that whole day
+      if (endDate && rawEnd && /^\d{4}-\d{2}-\d{2}$/.test(rawEnd)) {
+        endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+      }
 
       const overview = await analyticsService.getClientAnalyticsOverview(
         clientId,
@@ -134,6 +147,157 @@ export class AnalyticsController {
         error: 'Failed to fetch recent events',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
+    }
+  }
+
+  /**
+   * Recalculate analytics for a single campaign from raw email events.
+   * Scoped to the authenticated client — verifies campaign ownership.
+   * POST /analytics/campaigns/:id/recalculate
+   */
+  async recalculateCampaignAnalytics(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const clientId = (req as any).user?.clientId;
+
+      if (!clientId) {
+        return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      // Verify the campaign belongs to this client
+      const campaign = await prisma.campaign.findFirst({
+        where: { id, clientId },
+        select: { id: true, name: true },
+      });
+
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found for this client' });
+      }
+
+      // Snapshot current values before recalculation
+      const before = await prisma.campaignAnalytics.findUnique({
+        where: { campaignId: id },
+      });
+
+      const after = await campaignAnalyticsService.updateAnalyticsFromEvents(id);
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          campaignId: id,
+          campaignName: campaign.name,
+          before: before ? {
+            totalSent: before.totalSent,
+            totalDelivered: before.totalDelivered,
+            totalOpened: before.totalOpened,
+            totalClicked: before.totalClicked,
+            totalBounced: before.totalBounced,
+            totalUnsubscribed: before.totalUnsubscribed,
+            totalComplaints: before.totalComplaints,
+            uniqueOpens: before.uniqueOpens,
+            uniqueClicks: before.uniqueClicks,
+            openRate: before.openRate,
+            clickRate: before.clickRate,
+            bounceRate: before.bounceRate,
+          } : null,
+          after,
+        },
+      });
+    } catch (error) {
+      console.error('Error recalculating campaign analytics:', error);
+      return res.status(500).json({ error: 'Failed to recalculate analytics' });
+    }
+  }
+
+  /**
+   * Recalculate analytics for ALL campaigns of the current client from raw email events.
+   * Recomputes every metric from the EmailEvent table — the source of truth from webhooks.
+   * Net bounces: contacts that bounced but were never delivered are counted; retried+delivered are not.
+   * POST /analytics/recalculate-all
+   */
+  async recalculateAllAnalytics(req: Request, res: Response) {
+    try {
+      const clientId = (req as any).user?.clientId;
+      if (!clientId) {
+        return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      // Fetch campaign IDs + current analytics snapshot for before/after comparison
+      const campaigns = await prisma.campaign.findMany({
+        where: { clientId },
+        select: { id: true, name: true, analytics: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      const CONCURRENCY = 5;
+      const results: {
+        campaignId: string;
+        name: string;
+        status: string;
+        before: { totalBounced: number; bounceRate: number; totalDelivered: number } | null;
+        after: { totalBounced: number; bounceRate: number; totalDelivered: number } | null;
+        error?: string;
+      }[] = [];
+
+      for (let i = 0; i < campaigns.length; i += CONCURRENCY) {
+        const batch = campaigns.slice(i, i + CONCURRENCY);
+
+        const batchResults = await Promise.allSettled(
+          batch.map(async (c) => {
+            const before = c.analytics;
+            const after = await campaignAnalyticsService.updateAnalyticsFromEvents(c.id);
+            return {
+              campaignId: c.id,
+              name: c.name,
+              status: 'updated' as const,
+              before: before ? {
+                totalBounced: before.totalBounced,
+                bounceRate: before.bounceRate,
+                totalDelivered: before.totalDelivered,
+              } : null,
+              after: {
+                totalBounced: after.totalBounced,
+                bounceRate: after.bounceRate,
+                totalDelivered: after.totalDelivered,
+              },
+            };
+          })
+        );
+
+        for (let j = 0; j < batchResults.length; j++) {
+          const r = batchResults[j];
+          if (r.status === 'fulfilled') {
+            results.push(r.value);
+          } else {
+            results.push({
+              campaignId: batch[j].id,
+              name: batch[j].name,
+              status: 'error',
+              before: null,
+              after: null,
+              error: r.reason instanceof Error ? r.reason.message : 'Unknown error',
+            });
+          }
+        }
+      }
+
+      const updated = results.filter((r) => r.status === 'updated').length;
+      const failed  = results.filter((r) => r.status === 'error').length;
+      const corrected = results.filter((r) =>
+        r.before && r.after && r.before.totalBounced !== r.after.totalBounced
+      ).length;
+
+      return res.status(200).json({
+        success: true,
+        total: campaigns.length,
+        updated,
+        failed,
+        corrected,
+        results,
+      });
+    } catch (error) {
+      console.error('Error recalculating all analytics:', error);
+      return res.status(500).json({ error: 'Failed to recalculate analytics' });
     }
   }
 

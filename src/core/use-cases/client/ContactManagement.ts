@@ -58,4 +58,13 @@ export class ContactManagement {
   async deleteMany(ids: string[], clientId: string): Promise<number> {
     return this.contactRepository.deleteMany(ids, clientId);
   }
+
+  async search(
+  clientId: string,
+  query: string,
+  cursor?: string,
+  limit?: number
+) {
+  return this.contactRepository.search(clientId, query, cursor, limit);
+}
 }

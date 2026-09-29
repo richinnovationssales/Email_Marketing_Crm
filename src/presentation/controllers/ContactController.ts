@@ -49,6 +49,29 @@ export class ContactController {
     }
   }
 
+  async searchContacts(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.clientId) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Client ID is missing' });
+        return;
+      }
+
+      const query = req.query.query as string | undefined;
+      if (!query?.trim()) {
+        res.status(StatusCodes.BAD_REQUEST).json({ message: 'Search query is required' });
+        return;
+      }
+
+      const cursor = req.query.cursor as string | undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+      const result = await contactManagementUseCase.search(req.user.clientId, query.trim(), cursor, limit);
+      res.json(result);
+    } catch (error) {
+      console.error('Error searching contacts:', error);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ message: 'Internal server error' });
+    }
+  }
+
   async getContactById(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.user?.clientId) {

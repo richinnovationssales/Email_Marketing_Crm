@@ -1,12 +1,12 @@
 
-import prisma from '../src/infrastructure/database/prisma';
-import { ClientRegistrationUseCase } from '../src/core/use-cases/admin/ClientRegistrationUseCase';
-import { ContactManagement } from '../src/core/use-cases/client/ContactManagement';
-import { ClientRepository } from '../src/infrastructure/repositories/ClientRepository';
-import { UserRepository } from '../src/infrastructure/repositories/UserRepository';
-import { CustomFieldRepository } from '../src/infrastructure/repositories/CustomFieldRepository';
-import { ContactRepository } from '../src/infrastructure/repositories/ContactRepository';
-import { Contact } from '../src/core/entities/Contact';
+import prisma from '../infrastructure/database/prisma';
+import { ClientRegistrationUseCase } from '../core/use-cases/admin/ClientRegistrationUseCase';
+import { ContactManagement } from '../core/use-cases/client/ContactManagement';
+import { ClientRepository } from '../infrastructure/repositories/ClientRepository';
+import { UserRepository } from '../infrastructure/repositories/UserRepository';
+import { CustomFieldRepository } from '../infrastructure/repositories/CustomFieldRepository';
+import { ContactRepository } from '../infrastructure/repositories/ContactRepository';
+import { Contact } from '../core/entities/Contact';
 
 async function verify() {
     console.log('Starting Verification...');
