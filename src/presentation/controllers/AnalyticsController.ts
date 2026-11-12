@@ -101,7 +101,7 @@ export class AnalyticsController {
         return res.status(401).json({ error: 'Client ID not found in token' });
       }
 
-      const analytics = await campaignAnalyticsService.getCampaignAnalytics(id);
+      const analytics = await campaignAnalyticsService.getCampaignAnalytics(id, clientId);
 
       return res.status(200).json({
         success: true,
@@ -308,6 +308,16 @@ export class AnalyticsController {
   async getCampaignTimeline(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const clientId = (req as any).user?.clientId;
+
+      if (!clientId) {
+        return res.status(401).json({ error: 'Client ID not found in token' });
+      }
+
+      const campaign = await prisma.campaign.findFirst({ where: { id, clientId }, select: { id: true } });
+      if (!campaign) {
+        return res.status(404).json({ error: 'Campaign not found' });
+      }
 
       const timeline = await emailEventRepository.getCampaignTimeline(id);
 

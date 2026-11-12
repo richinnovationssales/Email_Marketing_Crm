@@ -219,9 +219,9 @@ export class CampaignAnalyticsService {
   /**
    * Get campaign analytics with campaign details
    */
-  async getCampaignAnalytics(campaignId: string) {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
+  async getCampaignAnalytics(campaignId: string, clientId?: string) {
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, ...(clientId ? { clientId } : {}) },
       include: {
         analytics: true,
         groups: {

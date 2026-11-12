@@ -46,6 +46,7 @@ export interface BulkEmailParams {
   text?: string;
   tags?: string[];
   recipientVariables?: Record<string, any>;
+  customVariables?: Record<string, string>; // Sent as v:<key>, returned in webhook user-variables
   clientConfig?: ClientMailgunConfig;  // Client-specific Mailgun configuration
 }
 
@@ -179,6 +180,14 @@ export class MailgunService {
         messageData['o:tag'] = params.tags;
       }
 
+      // Custom variables are echoed back in webhook "user-variables"
+      // (fallback attribution if tags are missing/truncated)
+      if (params.customVariables) {
+        for (const [key, value] of Object.entries(params.customVariables)) {
+          messageData[`v:${key}`] = value;
+        }
+      }
+
       // Send function that can be retried
       const sendBatch = async (domain: string, from: string, name: string): Promise<any> => {
         return this.mg.messages.create(domain, {
@@ -286,6 +295,10 @@ export class MailgunService {
       text,
       tags,
       recipientVariables,
+      customVariables: {
+        'campaign-id': campaignId,
+        'client-id': clientId,
+      },
       clientConfig,
     });
   }
