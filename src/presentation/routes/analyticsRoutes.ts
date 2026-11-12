@@ -21,6 +21,10 @@ router.get('/campaigns/:id', analyticsController.getCampaignAnalytics);
 // Campaign event timeline
 router.get('/campaigns/:id/timeline', analyticsController.getCampaignTimeline);
 
+// Rebuild stored analytics from events
+router.post('/recalculate-all', analyticsController.recalculateAll);
+router.post('/campaigns/:id/recalculate', analyticsController.recalculateCampaign);
+
 // Recent email events
 router.get('/events', analyticsController.getRecentEvents);
 

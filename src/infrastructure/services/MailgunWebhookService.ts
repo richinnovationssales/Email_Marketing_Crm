@@ -1,11 +1,11 @@
 // src/infrastructure/services/MailgunWebhookService.ts
 import crypto from 'crypto';
-import { EmailEventType, SuppressionType, PrismaClient } from '@prisma/client';
+import prisma from '../database/prisma';
+import { EmailEventType, SuppressionType } from '@prisma/client';
 import { EmailEventRepository } from '../repositories/EmailEventRepository';
 import { SuppressionListService } from './SuppressionListService';
 import { CampaignAnalyticsService } from './CampaignAnalyticsService';
 
-const prisma = new PrismaClient();
 
 export interface MailgunWebhookPayload {
   signature: {

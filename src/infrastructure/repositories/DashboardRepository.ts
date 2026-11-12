@@ -54,30 +54,57 @@ export class DashboardRepository {
   }
 
   async getCampaignPerformanceReport(filters: { startDate?: Date, endDate?: Date, clientId?: string }) {
-    const where: any = {};
+    const where: any = { status: 'SENT' };
     if (filters.clientId) {
       where.clientId = filters.clientId;
     }
-    if (filters.startDate && filters.endDate) {
-      where.createdAt = {
-        gte: filters.startDate,
-        lte: filters.endDate,
-      };
+    // Filter by send date (not creation date) so the range matches what the user sees in reports
+    if (filters.startDate || filters.endDate) {
+      where.sentAt = {};
+      if (filters.startDate) where.sentAt.gte = filters.startDate;
+      if (filters.endDate) where.sentAt.lte = filters.endDate;
     }
-    return prisma.campaign.findMany({
+    const campaigns = await prisma.campaign.findMany({
       where,
+      orderBy: { sentAt: 'desc' },
       select: {
         id: true,
         name: true,
         subject: true,
+        status: true,
         createdAt: true,
-        updatedAt: true,
-        // tenant: {
-        //   select: {
-        //     name: true,
-        //   },
-        // },
+        sentAt: true,
+        client: { select: { name: true } },
+        analytics: true,
       },
+    });
+
+    return campaigns.map((c) => {
+      const a = c.analytics;
+      const sent = a?.totalSent ?? 0;
+      const delivered = a?.totalDelivered ?? 0;
+      const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10000) / 100 : 0);
+      return {
+        id: c.id,
+        name: c.name,
+        subject: c.subject,
+        status: c.status,
+        client: c.client?.name ?? '',
+        createdAt: c.createdAt,
+        sentAt: c.sentAt,
+        totalSent: sent,
+        totalDelivered: delivered,
+        totalOpened: a?.totalOpened ?? 0,
+        uniqueOpens: a?.uniqueOpens ?? 0,
+        totalClicked: a?.totalClicked ?? 0,
+        uniqueClicks: a?.uniqueClicks ?? 0,
+        totalBounced: a?.totalBounced ?? 0,
+        totalComplaints: a?.totalComplaints ?? 0,
+        deliveryRate: pct(delivered, sent),
+        openRate: pct(a?.uniqueOpens ?? 0, delivered),
+        clickRate: pct(a?.uniqueClicks ?? 0, delivered),
+        bounceRate: pct(a?.totalBounced ?? 0, sent),
+      };
     });
   }
 }

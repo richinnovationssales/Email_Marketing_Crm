@@ -163,9 +163,9 @@ export class CampaignAnalyticsService {
   /**
    * Get campaign analytics with campaign details
    */
-  async getCampaignAnalytics(campaignId: string) {
-    const campaign = await prisma.campaign.findUnique({
-      where: { id: campaignId },
+  async getCampaignAnalytics(campaignId: string, clientId?: string) {
+    const campaign = await prisma.campaign.findFirst({
+      where: { id: campaignId, ...(clientId ? { clientId } : {}) },
       include: {
         analytics: true,
         groups: {
@@ -193,6 +193,20 @@ export class CampaignAnalyticsService {
       },
       analytics: freshAnalytics,
     };
+  }
+
+  /**
+   * Rebuild stored analytics from EmailEvent rows for every sent campaign of a client
+   */
+  async recalculateAllForClient(clientId: string): Promise<number> {
+    const campaigns = await prisma.campaign.findMany({
+      where: { clientId, status: 'SENT' },
+      select: { id: true },
+    });
+    for (const c of campaigns) {
+      await this.updateAnalyticsFromEvents(c.id);
+    }
+    return campaigns.length;
   }
 
   /**

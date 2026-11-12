@@ -68,19 +68,23 @@ export class DashboardController {
         const workbook = new excel.Workbook();
         const worksheet = workbook.addWorksheet('Campaign Performance');
         worksheet.columns = [
-          { header: 'Campaign ID', key: 'id', width: 30 },
           { header: 'Campaign Name', key: 'name', width: 30 },
-          { header: 'Subject', key: 'subject', width: 50 },
+          { header: 'Subject', key: 'subject', width: 45 },
           { header: 'Client', key: 'client', width: 20 },
-          { header: 'Created At', key: 'createdAt', width: 20 },
+          { header: 'Sent At', key: 'sentAt', width: 20 },
+          { header: 'Sent', key: 'totalSent', width: 10 },
+          { header: 'Delivered', key: 'totalDelivered', width: 12 },
+          { header: 'Delivery Rate %', key: 'deliveryRate', width: 15 },
+          { header: 'Unique Opens', key: 'uniqueOpens', width: 14 },
+          { header: 'Open Rate %', key: 'openRate', width: 12 },
+          { header: 'Unique Clicks', key: 'uniqueClicks', width: 14 },
+          { header: 'Click Rate %', key: 'clickRate', width: 12 },
+          { header: 'Bounced', key: 'totalBounced', width: 10 },
+          { header: 'Bounce Rate %', key: 'bounceRate', width: 14 },
+          { header: 'Complaints / Unsubscribes', key: 'totalComplaints', width: 24 },
+          { header: 'Campaign ID', key: 'id', width: 30 },
         ];
-        report.forEach(item => {
-          worksheet.addRow({
-            ...item,
-            // If you want to include a client name, ensure it's part of the item object, e.g. clientName: item.clientName
-            // client: item.clientName, // Uncomment if item.clientName exists
-          });
-        });
+        report.forEach(item => worksheet.addRow(item));
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', 'attachment; filename=campaign-performance.xlsx');
         await workbook.xlsx.write(res);
