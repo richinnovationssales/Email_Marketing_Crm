@@ -1,9 +1,11 @@
 // src/infrastructure/services/MailgunWebhookService.ts
 import crypto from 'crypto';
-import { EmailEventType, SuppressionType } from '@prisma/client';
+import { EmailEventType, SuppressionType, PrismaClient } from '@prisma/client';
 import { EmailEventRepository } from '../repositories/EmailEventRepository';
 import { SuppressionListService } from './SuppressionListService';
 import { CampaignAnalyticsService } from './CampaignAnalyticsService';
+
+const prisma = new PrismaClient();
 
 export interface MailgunWebhookPayload {
   signature: {
@@ -79,9 +81,10 @@ export class MailgunWebhookService {
 
     const { timestamp, token, signature } = payload.signature;
 
-    // Check timestamp is within 5 minutes
+    // Mailgun retries failed deliveries for up to ~8 hours, so a 5-minute window
+    // rejects every retry. Allow 24h; duplicates are already blocked by event-id dedup.
     const timestampAge = Math.abs(Date.now() / 1000 - parseInt(timestamp, 10));
-    if (timestampAge > 300) {
+    if (!Number.isFinite(timestampAge) || timestampAge > 24 * 60 * 60) {
       console.warn('Webhook timestamp too old:', timestampAge);
       return false;
     }
@@ -92,7 +95,10 @@ export class MailgunWebhookService {
       .update(timestamp + token)
       .digest('hex');
 
-    const isValid = encodedToken === signature;
+    const isValid =
+      typeof signature === 'string' &&
+      signature.length === encodedToken.length &&
+      crypto.timingSafeEqual(Buffer.from(encodedToken), Buffer.from(signature));
     if (!isValid) {
       console.warn('Webhook signature mismatch');
     }
@@ -109,17 +115,19 @@ export class MailgunWebhookService {
 
     console.log(`Processing Mailgun webhook: ${mailgunEvent} for ${eventData.recipient}`);
 
-    // Extract campaign and client IDs from tags
-    const tags = eventData.tags || [];
-    const campaignId = this.extractTagValue(tags, 'campaign-');
-    const clientId = this.extractTagValue(tags, 'client-');
+    // Resolve campaign and client IDs: tags -> user-variables -> message-id lookup
+    const { clientId, campaignId } = await this.resolveIds(eventData);
 
     if (!clientId) {
-      console.warn('No client ID found in webhook tags');
+      // Not one of our campaign emails (e.g. Mailgun "Test" button sample payload,
+      // or mail sent outside the CRM). Acknowledge with 200 so Mailgun does not retry.
+      console.warn(
+        `Unattributable ${mailgunEvent} event (no client ID). tags=${JSON.stringify(eventData.tags || [])}`
+      );
       return {
-        success: false,
+        success: true,
         eventType: mailgunEvent,
-        message: 'No client ID in webhook tags',
+        message: 'Event ignored: no client ID in tags, user-variables or message lookup',
       };
     }
 
@@ -178,6 +186,39 @@ export class MailgunWebhookService {
       message: 'Event processed successfully',
       eventId: emailEvent.id,
     };
+  }
+
+  /**
+   * Resolve client/campaign IDs for an event using every source Mailgun gives us.
+   */
+  private async resolveIds(
+    eventData: MailgunWebhookPayload['event-data']
+  ): Promise<{ clientId: string | null; campaignId: string | null }> {
+    const tags = eventData.tags || [];
+    const userVars = eventData['user-variables'] || {};
+
+    let campaignId =
+      this.extractTagValue(tags, 'campaign-') || (userVars['campaign-id'] as string) || null;
+    let clientId =
+      this.extractTagValue(tags, 'client-') || (userVars['client-id'] as string) || null;
+
+    // Last resort: match Mailgun message-id against the IDs stored when the campaign was sent
+    if (!clientId || !campaignId) {
+      const messageId = eventData.message?.headers?.['message-id'];
+      if (messageId) {
+        const bare = messageId.replace(/^<|>$/g, '');
+        const campaign = await prisma.campaign.findFirst({
+          where: { mailgunMessageIds: { contains: bare } },
+          select: { id: true, clientId: true },
+        });
+        if (campaign) {
+          campaignId = campaignId || campaign.id;
+          clientId = clientId || campaign.clientId;
+        }
+      }
+    }
+
+    return { clientId, campaignId };
   }
 
   /**
